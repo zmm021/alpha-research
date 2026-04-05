@@ -1,0 +1,17 @@
+# Ignore all data files
+Data/
+
+# Mac / system
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
