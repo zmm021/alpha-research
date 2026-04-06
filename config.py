@@ -111,3 +111,13 @@ ENABLE_L3 = False  # 先不做
 
 DEBUG = True
 LOG_LEVEL = "INFO"
+
+
+# =========================
+# 🧪 Postgres DB
+# =========================
+PG_HOST = "localhost"
+PG_PORT = 5432
+PG_DBNAME = "alpha_stack"
+PG_USER = "trading_os"
+PG_PASSWORD = "pwd_124"
