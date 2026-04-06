@@ -58,3 +58,19 @@ python3 -m postgres.meta_cli get-macro-groups
 ```bash
 python3 -m postgres.meta_cli get-macro-symbols-meta
 ```
+# 获取pipeline offset
+## 10. Get last offset for a symbol
+
+```bash
+python3 -m postgres.meta_cli get-offset --symbol UUUU
+```
+
+## 11. Update offset for a symbol
+```bash
+python3 -m postgres.meta_cli update-offset --symbol UUUU --date 2026-01-02
+```
+
+## 12. Get all symbol offsets
+```bash
+python3 -m postgres.meta_cli get-all-offsets
+```

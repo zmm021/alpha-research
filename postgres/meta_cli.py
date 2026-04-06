@@ -13,6 +13,9 @@ from postgres.meta_repo import (
     get_macro_symbols,
     get_macro_symbols_by_group,
     get_macro_symbols_with_meta,
+    get_all_offsets,
+    update_offset,
+    get_last_offset
 )
 
 
@@ -72,6 +75,22 @@ def build_parser() -> argparse.ArgumentParser:
         "get-macro-symbols-meta",
         help="Get macro symbols with metadata"
     )
+    p10 = subparsers.add_parser(
+        "get-offset",
+        help="Get last offset for a symbol"
+    )
+    p10.add_argument("--symbol", required=True)
+
+    p11 = subparsers.add_parser(
+        "update-offset",
+        help="Update offset for a symbol"
+    )
+    p11.add_argument("--symbol", required=True)
+    p11.add_argument("--date", required=True, help="YYYY-MM-DD")
+    p12 = subparsers.add_parser(
+        "get-all-offsets",
+        help="Get all symbol offsets"
+    )
     return parser
 
 
@@ -113,6 +132,17 @@ def main() -> None:
     elif args.command == "get-macro-symbols-meta":
         result = get_macro_symbols_with_meta()
         print(json.dumps(result, indent=2, ensure_ascii=False, default=float))
+    elif args.command == "get-offset":
+        result = get_last_offset(args.symbol)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    elif args.command == "update-offset":
+        update_offset(args.symbol, args.date)
+        print(f"Updated offset for {args.symbol} -> {args.date}")
+    elif args.command == "get-all-offsets":
+        result = get_all_offsets()
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
     else:
         raise ValueError(f"Unsupported command: {args.command}")
 

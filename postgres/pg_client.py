@@ -50,3 +50,11 @@ def fetch_one(sql: str, params: Optional[Iterable[Any]] = None) -> Optional[dict
     with get_cursor(commit=False) as cur:
         cur.execute(sql, params or ())
         return cur.fetchone()
+def execute(sql: str, params=None) -> None:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+        conn.commit()
+    finally:
+        conn.close()

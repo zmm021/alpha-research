@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from postgres.pg_client import fetch_all
+from postgres.pg_client import fetch_all,execute
 
 
 def get_sector_symbols(sector_name: str, asset_type: str | None = None) -> list[str]:
@@ -125,3 +125,46 @@ def get_macro_symbols_with_meta() -> list[dict]:
     ORDER BY g.macro_group_name, s.symbol
     """
     return fetch_all(sql)
+
+
+def get_last_offset(symbol: str) -> str | None:
+    sql = """
+    SELECT offset_date
+    FROM public.meta_symbol_offset
+    WHERE symbol = %s
+    """
+    rows = fetch_all(sql, [symbol])
+
+    if not rows:
+        return None
+
+    return str(rows[0]["offset_date"])
+
+def update_offset(symbol: str, new_offset: str) -> None:
+    current = get_last_offset(symbol)
+
+    if current is not None and new_offset <= current:
+        # 不更新（防止回退）
+        return
+
+    sql = """
+    INSERT INTO public.meta_symbol_offset (symbol, offset_date)
+    VALUES (%s, %s)
+    ON CONFLICT (symbol)
+    DO UPDATE SET
+        offset_date = EXCLUDED.offset_date,
+        updated_at = CURRENT_TIMESTAMP
+    """
+    execute(sql, [symbol, new_offset])
+
+def get_all_offsets() -> dict[str, str]:
+    sql = """
+    SELECT symbol, offset_date
+    FROM public.meta_symbol_offset
+    """
+    rows = fetch_all(sql)
+
+    return {
+        row["symbol"]: str(row["offset_date"])
+        for row in rows
+    }
