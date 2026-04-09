@@ -45,6 +45,13 @@ from quant.indicator_params import (
     ROLLING_STD_WINDOWS,
     RSI_WINDOWS,
 )
+from quant.utils import safe_log
+
+
+__all__ = [
+    "build_primitive_feature_series",
+    "build_primitive_snapshot",
+]
 
 
 REQUIRED_COLUMNS = {
@@ -57,6 +64,41 @@ REQUIRED_COLUMNS = {
 }
 
 
+def build_primitive_feature_series(df: pd.DataFrame) -> pd.DataFrame:
+    out = _validate_input(df)
+
+    out = _add_ma_indicators(out)
+    out = _add_ema_indicators(out)
+    out = _add_rsi_indicators(out)
+    out = _add_macd_indicators(out)
+    out = _add_atr_indicators(out)
+    out = _add_rolling_std_indicators(out)
+    out = _add_bollinger_indicators(out)
+    out = _add_high_low_indicators(out)
+    out = _add_return_indicators(out)
+    out = _add_price_shape_indicators(out)
+    out = _add_volume_indicators(out)
+
+    return out
+
+    
+def build_primitive_snapshot(
+    df: pd.DataFrame,
+    *,
+    as_of: str | pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    out = build_primitive_feature_series(df)
+
+    if out.empty:
+        return out.copy()
+
+    if as_of is not None:
+        as_of_ts = pd.to_datetime(as_of)
+        out = out[out[COL_DATE] == as_of_ts]
+        return out.reset_index(drop=True)
+
+    return out.iloc[[-1]].reset_index(drop=True)
+
 def _validate_input(df: pd.DataFrame) -> pd.DataFrame:
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
@@ -68,14 +110,14 @@ def _validate_input(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_ma_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_ma_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for w in MA_WINDOWS:
         out[ma_col(w)] = out[COL_CLOSE].rolling(window=w, min_periods=w).mean()
     return out
 
 
-def add_ema_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_ema_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for w in EMA_WINDOWS:
         out[ema_col(w)] = out[COL_CLOSE].ewm(span=w, adjust=False, min_periods=w).mean()
@@ -94,14 +136,14 @@ def _compute_rsi(close: pd.Series, window: int) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
-def add_rsi_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_rsi_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for w in RSI_WINDOWS:
         out[rsi_col(w)] = _compute_rsi(out[COL_CLOSE], w)
     return out
 
 
-def add_macd_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_macd_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     ema_fast = out[COL_CLOSE].ewm(span=MACD_FAST, adjust=False, min_periods=MACD_FAST).mean()
     ema_slow = out[COL_CLOSE].ewm(span=MACD_SLOW, adjust=False, min_periods=MACD_SLOW).mean()
@@ -124,7 +166,7 @@ def _true_range(df: pd.DataFrame) -> pd.Series:
     return pd.concat([hl, hc, lc], axis=1).max(axis=1)
 
 
-def add_atr_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_atr_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     tr = _true_range(out)
     for w in ATR_WINDOWS:
@@ -132,7 +174,7 @@ def add_atr_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_rolling_std_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_rolling_std_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     daily_return = out[COL_CLOSE].pct_change()
     for w in ROLLING_STD_WINDOWS:
@@ -140,7 +182,7 @@ def add_rolling_std_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_bollinger_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_bollinger_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     mid = out[COL_CLOSE].rolling(window=BOLL_WINDOW, min_periods=BOLL_WINDOW).mean()
     std = out[COL_CLOSE].rolling(window=BOLL_WINDOW, min_periods=BOLL_WINDOW).std()
@@ -152,7 +194,7 @@ def add_bollinger_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_high_low_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_high_low_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for w in HIGH_LOW_WINDOWS:
         out[highest_high_col(w)] = out[COL_HIGH].rolling(window=w, min_periods=w).max()
@@ -160,42 +202,24 @@ def add_high_low_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_return_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_return_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for w in RETURN_WINDOWS:
         out[return_col(w)] = out[COL_CLOSE].pct_change(periods=w)
 
-    out[COL_LOG_RETURN_1D] = np.log(out[COL_CLOSE] / out[COL_CLOSE].shift(1))
+    out[COL_LOG_RETURN_1D] = safe_log(out[COL_CLOSE]).diff(1)
     return out
 
 
-def add_price_shape_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_price_shape_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[COL_HL_RANGE] = out[COL_HIGH] - out[COL_LOW]
     out[COL_OC_CHANGE] = out[COL_CLOSE] - out[COL_OPEN]
     return out
 
 
-def add_volume_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_volume_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for w in AVG_VOLUME_WINDOWS:
         out[avg_volume_col(w)] = out[COL_VOLUME].rolling(window=w, min_periods=w).mean()
-    return out
-
-
-def build_primitive_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    out = _validate_input(df)
-
-    out = add_ma_indicators(out)
-    out = add_ema_indicators(out)
-    out = add_rsi_indicators(out)
-    out = add_macd_indicators(out)
-    out = add_atr_indicators(out)
-    out = add_rolling_std_indicators(out)
-    out = add_bollinger_indicators(out)
-    out = add_high_low_indicators(out)
-    out = add_return_indicators(out)
-    out = add_price_shape_indicators(out)
-    out = add_volume_indicators(out)
-
     return out

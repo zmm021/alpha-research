@@ -5,7 +5,7 @@ from pathlib import Path
 # ========================= 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-BASE_DIR = PROJECT_ROOT / "Data"
+BASE_DIR = PROJECT_ROOT / "data"
 MARKET_DIR = BASE_DIR / "market" 
 
 # symbol data structure

@@ -81,6 +81,10 @@ from quant.indicator_params import (
     VOL_PERCENTILE_WINDOW,
 )
 
+
+__all__ = ["build_derived_indicators"]
+
+
 COL_MA_20 = ma_col(20)
 COL_MA_50 = ma_col(50)
 COL_MA_200 = ma_col(200)
@@ -120,6 +124,33 @@ REQUIRED_L2_BASE_COLUMNS = {
 }
 
 
+def build_derived_feature_series(df: pd.DataFrame) -> pd.DataFrame:
+    out = _validate_input(df)
+
+    out = _add_price_vs_ma_indicators(out)
+    out = _add_ma_slope_indicators(out)
+    out = _add_ma_alignment_indicators(out)
+    out = _add_trend_strength_indicator(out)
+
+    out = _add_rsi_state_indicators(out)
+    out = _add_macd_state_indicators(out)
+
+    out = _add_atr_pct_indicator(out)
+    out = _add_volatility_percentile_indicators(out)
+    out = _add_bollinger_position_indicators(out)
+
+    out = _add_distance_to_recent_levels(out)
+    out = _add_range_efficiency_indicator(out)
+    out = _add_chopiness_index(out)
+    out = _add_drawdown_rebound_indicators(out)
+
+    out = _add_volume_structure_indicators(out)
+    out = _add_symbol_vs_market_indicators(out)
+    out = _add_sector_strength_indicator(out)
+
+    return out
+
+
 def _validate_input(df: pd.DataFrame) -> pd.DataFrame:
     missing = REQUIRED_L2_BASE_COLUMNS - set(df.columns)
     if missing:
@@ -131,7 +162,7 @@ def _validate_input(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_price_vs_ma_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_price_vs_ma_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[COL_PRICE_VS_MA20] = out[COL_CLOSE] / out[COL_MA_20] - 1.0
     out[COL_PRICE_VS_MA50] = out[COL_CLOSE] / out[COL_MA_50] - 1.0
@@ -143,7 +174,7 @@ def _slope(series: pd.Series, window: int) -> pd.Series:
     return (series - series.shift(window)) / window
 
 
-def add_ma_slope_indicators(
+def _add_ma_slope_indicators(
     df: pd.DataFrame,
     window: int = MA_SLOPE_WINDOW,
 ) -> pd.DataFrame:
@@ -154,7 +185,7 @@ def add_ma_slope_indicators(
     return out
 
 
-def add_ma_alignment_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_ma_alignment_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[COL_MA_ALIGNMENT_BULLISH] = (
         (out[COL_MA_20] > out[COL_MA_50]) & (out[COL_MA_50] > out[COL_MA_200])
@@ -165,7 +196,7 @@ def add_ma_alignment_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_trend_strength_indicator(df: pd.DataFrame) -> pd.DataFrame:
+def _add_trend_strength_indicator(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[COL_TREND_STRENGTH] = (
         out[COL_PRICE_VS_MA20].abs()
@@ -195,14 +226,14 @@ def _map_rsi_regime(x: float) -> Optional[str]:
     return STATE_NEUTRAL
 
 
-def add_rsi_state_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_rsi_state_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[COL_RSI_STATE] = out[COL_RSI_14].apply(_map_rsi_state)
     out[COL_RSI_REGIME] = out[COL_RSI_14].apply(_map_rsi_regime)
     return out
 
 
-def add_macd_state_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_macd_state_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
 
     diff = out[COL_MACD_DIFF]
@@ -226,7 +257,7 @@ def add_macd_state_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_atr_pct_indicator(df: pd.DataFrame) -> pd.DataFrame:
+def _add_atr_pct_indicator(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[COL_ATR_PCT] = out[COL_ATR_14] / out[COL_CLOSE]
     return out
@@ -237,7 +268,7 @@ def _rolling_percentile_last(series: pd.Series) -> float:
     return s.rank(pct=True).iloc[-1]
 
 
-def add_volatility_percentile_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_volatility_percentile_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
 
     out[COL_VOL_PERCENTILE_20] = (
@@ -255,7 +286,7 @@ def add_volatility_percentile_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_bollinger_position_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_bollinger_position_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     band_range = (out[COL_BOLL_UPPER] - out[COL_BOLL_LOWER]).replace(0, np.nan)
 
@@ -265,14 +296,14 @@ def add_bollinger_position_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_distance_to_recent_levels(df: pd.DataFrame) -> pd.DataFrame:
+def _add_distance_to_recent_levels(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[COL_DISTANCE_TO_RECENT_HIGH] = out[COL_CLOSE] / out[COL_HIGHEST_HIGH_20] - 1.0
     out[COL_DISTANCE_TO_RECENT_LOW] = out[COL_CLOSE] / out[COL_LOWEST_LOW_20] - 1.0
     return out
 
 
-def add_range_efficiency_indicator(
+def _add_range_efficiency_indicator(
     df: pd.DataFrame,
     window: int = RANGE_EFFICIENCY_WINDOW,
 ) -> pd.DataFrame:
@@ -285,7 +316,7 @@ def add_range_efficiency_indicator(
     return out
 
 
-def add_chopiness_index(
+def _add_chopiness_index(
     df: pd.DataFrame,
     window: int = CHOPINESS_WINDOW,
 ) -> pd.DataFrame:
@@ -309,7 +340,7 @@ def add_chopiness_index(
     return out
 
 
-def add_drawdown_rebound_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_drawdown_rebound_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     rolling_peak = out[COL_CLOSE].cummax()
     rolling_low = out[COL_CLOSE].cummin()
@@ -319,7 +350,7 @@ def add_drawdown_rebound_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_volume_structure_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _add_volume_structure_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out[COL_VOLUME_VS_AVG20] = out[COL_VOLUME] / out[COL_AVG_VOLUME_20]
 
@@ -335,7 +366,7 @@ def add_volume_structure_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_symbol_vs_market_indicators(
+def _add_symbol_vs_market_indicators(
     df: pd.DataFrame,
     market_return_col: str = COL_SPY_RETURN,
 ) -> pd.DataFrame:
@@ -345,7 +376,7 @@ def add_symbol_vs_market_indicators(
     return out
 
 
-def add_sector_strength_indicator(
+def _add_sector_strength_indicator(
     df: pd.DataFrame,
     sector_return_col: str = COL_SECTOR_RETURN,
     market_return_col: str = COL_SPY_RETURN,
@@ -353,31 +384,4 @@ def add_sector_strength_indicator(
     out = df.copy()
     if sector_return_col in out.columns and market_return_col in out.columns:
         out[COL_SECTOR_STRENGTH] = out[sector_return_col] - out[market_return_col]
-    return out
-
-
-def build_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    out = _validate_input(df)
-
-    out = add_price_vs_ma_indicators(out)
-    out = add_ma_slope_indicators(out)
-    out = add_ma_alignment_indicators(out)
-    out = add_trend_strength_indicator(out)
-
-    out = add_rsi_state_indicators(out)
-    out = add_macd_state_indicators(out)
-
-    out = add_atr_pct_indicator(out)
-    out = add_volatility_percentile_indicators(out)
-    out = add_bollinger_position_indicators(out)
-
-    out = add_distance_to_recent_levels(out)
-    out = add_range_efficiency_indicator(out)
-    out = add_chopiness_index(out)
-    out = add_drawdown_rebound_indicators(out)
-
-    out = add_volume_structure_indicators(out)
-    out = add_symbol_vs_market_indicators(out)
-    out = add_sector_strength_indicator(out)
-
     return out

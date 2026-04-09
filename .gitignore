@@ -1,5 +1,5 @@
 # Ignore all data files
-Data/
+data/
 
 # Mac / system
 .DS_Store
