@@ -1,0 +1,36 @@
+indicators:
+  ma_short_window: 20
+  ma_long_window: 50
+  atr_window: 14
+  volume_window: 20
+  high_window: 20
+
+factors:
+  trend_scale: 1.0
+  volatility_scale: 1.0
+  liquidity_scale: 1.0
+  position_scale: 1.0
+  intraday_scale: 1.0
+
+  trend_cross_weight: 0.7
+  trend_slope_weight: 0.3
+
+  intraday_gap_weight: 0.5
+  intraday_vwap_weight: 0.5
+
+contexts:
+  exhaustion_position_weight: 0.5
+  exhaustion_intraday_weight: 0.5
+
+  failure_vol_weight: 0.6
+  failure_intraday_weight: 0.4
+
+state:
+  trend_threshold: 0.3
+  range_threshold: 0.15
+  volatility_threshold: 0.05
+  risk_vol_threshold: 0.10
+  exhaustion_threshold: 0.8
+  failure_threshold: 0.8
+  breakout_intent_threshold: 0.02
+  pullback_position_threshold: 0.02

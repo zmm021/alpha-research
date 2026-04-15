@@ -1,0 +1,14 @@
+signal:
+  enable_risk_filter: true
+  enable_sector_filter: true
+
+  allow_trend_buy: true
+  allow_pullback_buy: true
+  allow_breakout_buy: true
+
+  breakout_requires_non_weak_sector: true
+
+  exhausted_action: "reduce"
+  breakdown_action: "sell"
+  high_risk_action: "sell"
+  default_action: "hold"

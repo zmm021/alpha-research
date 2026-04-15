@@ -1,264 +1,245 @@
-# Alpha Stack Indicators 使用说明（最终版）
+# Quant 模块说明（Alpha Stack）
 
-本系统指标模块统一采用 **“序列计算 + Snapshot 输出”** 的设计。
+## 🧠 一、模块目标
 
----
+`quant` 模块实现的是一个**基于市场结构的多层交易系统**。
 
-# 🧱 核心设计
+它的职责是：
 
-所有指标函数分为两类：
-
-## 1️⃣ Feature Series（基础能力）
-
-```python
-build_xxx_feature_series(df)
 ```
-
-- 输入：一段时间序列（bars）
-- 输出：每个时间点的完整指标
-
-👉 用于：
-- offline research
-- backtest
-- training
-- 调试 / 可视化
-
----
-
-## 2️⃣ Snapshot（对外接口）
-
-```python
-build_xxx_snapshot(df)
-```
-
-- 输入：一段时间序列（window）
-- 输出：最后一个时间点的指标（单行）
-
-👉 用于：
-- offline daily pipeline
-- online realtime system
-
----
-
-# 🧠 关键原则
-
-## ✔ 指标函数不关心频率
-
-函数只关心：
-
-- 输入是一个有序的 bar 序列
-- 包含 OHLCV
-
-它不关心：
-
-- 是 1min / 5min / 1D
-
----
-
-## ✔ 频率由上层决定
-
-| 场景 | 输入 |
-|------|------|
-| realtime | 1min / 5min bars |
-| daily snapshot | daily bars（由 minute 聚合） |
-
----
-
-## ✔ 输入必须是“序列”，不是单点
-
-即使只输出一个 snapshot：
-
-- 输入仍然需要一段历史 window
-- 因为指标依赖历史（MA / RSI / MACD 等）
-
----
-
-# 📦 各模块说明
-
----
-
-## 1️⃣ Primitive Indicators（L1）
-
-### Feature Series
-
-```python
-build_primitive_feature_series(df)
-```
-
-### Snapshot
-
-```python
-build_primitive_snapshot(df)
-```
-
-输入：
-
-- 单个标的 OHLCV 序列
-
-输出：
-
-- MA / EMA
-- RSI
-- MACD
-- ATR
-- Bollinger
-- Return
-- Volume 特征
-
----
-
-## 2️⃣ Derived Indicators（L2 输入特征）
-
-### Feature Series
-
-```python
-build_derived_feature_series(df)
-```
-
-### Snapshot
-
-```python
-build_derived_snapshot(df)
-```
-
-输入：
-
-- Primitive 输出
-
-输出：
-
-- trend_strength
-- volatility regime
-- range efficiency
-- momentum state
-
----
-
-## 3️⃣ Macro Indicators（L0）
-
-### Feature Series
-
-```python
-build_macro_feature_series(daily_map)
-```
-
-### Snapshot
-
-```python
-build_macro_snapshot(daily_map)
-```
-
-输入：
-
-- 多个宏观资产（SPY / VIX / TLT 等）
-
-输出：
-
-- risk_on / risk_off
-- macro trend
-- volatility regime
-
----
-
-## 4️⃣ Sector Indicators（L0）
-
-### Feature Series
-
-```python
-build_sector_feature_series(...)
-```
-
-### Snapshot
-
-```python
-build_sector_snapshot(...)
-```
-
-输入：
-
-- sector ETF 或成员
-
-输出：
-
-- sector strength
-- breadth
-- relative strength
-
----
-
-# 🔁 Pipeline 使用方式
-
----
-
-## 🟢 Offline Daily Pipeline
-
-```python
-# 1. minute → daily 聚合
-daily_df = aggregate_to_daily(minute_df)
-
-# 2. 计算指标
-primitive = build_primitive_snapshot(daily_df)
-derived = build_derived_snapshot(build_primitive_feature_series(daily_df))
-
-macro = build_macro_snapshot(macro_map)
-sector = build_sector_snapshot(sector_map, ...)
+原始市场数据 → 特征 → 状态 → 行为信号（action_signal）
 ```
 
 ---
 
-## 🔵 Online Realtime
+## 🧩 二、整体架构
+
+```
+raw data
+  ↓
+feature_engine
+  ↓
+macro / sector / symbol states
+  ↓
+signal_engine
+  ↓
+action_signal（买卖信号）
+  ↓
+position_engine（未来）
+```
+
+---
+
+## 📦 三、目录结构
+
+```
+quant/
+  common/        # 基础定义（枚举、常量、数据结构）
+  macro/         # 宏观层计算
+  sector/        # 板块层计算（多序列聚合）
+  symbol/        # 个股层计算
+
+  engine/
+    feature_engine.py   # 特征构建（核心）
+    signal_engine.py    # 生成买卖信号
+```
+
+---
+
+## 🔹 四、Feature Engine（特征引擎）
+
+### 核心接口
 
 ```python
-# 最近一段分钟 bars
-minute_df = get_recent_bars()
-
-primitive_rt = build_primitive_snapshot(minute_df)
-derived_rt = build_derived_snapshot(
-    build_primitive_feature_series(minute_df)
+build_feature_frame(
+    symbol_df,
+    sector_etf_df,
+    sector_member_dfs,
+    spy_df,
+    vix_df,
+    hy_oas_df,
+    config_bundle,
 )
 ```
 
 ---
 
-# 📏 历史数据要求
+### 输入说明
 
-输入序列长度必须 ≥ 最大窗口
-
-建议：
-
-- daily：~300 bars
-- minute：100~300 bars
-
----
-
-# 🚫 不要做的事情
-
-❌ 不要只给单个 bar  
-❌ 不要用 snapshot 作为输入再算基础指标  
-❌ 不要让指标函数负责数据聚合  
-❌ 不要写 DB 逻辑  
-
----
-
-# 🧩 数据流总结
-
-```text
-raw data (minute)
-    ↓
-聚合成目标频率（daily / 1min）
-    ↓
-feature_series
-    ↓
-snapshot（最后一行）
-    ↓
-L2 / L3
+```
+symbol_df           → 目标股票（主时间轴）
+sector_etf_df       → 板块ETF
+sector_member_dfs   → 板块成分股（dict）
+spy_df / vix_df     → 宏观数据
+hy_oas_df           → 信用利差
+config_bundle       → 配置（symbol / sector / macro）
 ```
 
 ---
 
-# 🚀 一句话总结
+### 输出说明
 
-> 指标函数负责“计算”，不负责“数据准备”，不负责“存储”
+返回一个 `pd.DataFrame`，以 **symbol 时间轴为基准对齐**：
+
+```
+index = symbol timestamp
+
+columns =
+  symbol 指标 / 因子 / context / state
+
+  sector 指标 / context / state（带 _sector 后缀）
+
+  macro 指标 / context / state（带 _macro 后缀）
+```
 
 ---
 
+### 示例调用
+
+```python
+features = build_feature_frame(
+    symbol_df,
+    sector_etf_df,
+    sector_member_dfs,
+    spy_df,
+    vix_df,
+    hy_oas_df,
+    config_bundle,
+)
+```
+
+---
+
+## 🔹 五、Signal Engine（信号引擎）
+
+### 核心接口
+
+```python
+compute_action_signals(feature_df, config)
+```
+
+---
+
+### 输入
+
+```
+feature_df → feature_engine 输出结果
+config     → signal 配置
+```
+
+---
+
+### 输出
+
+```python
+pd.Series[ActionSignal]
+```
+
+枚举定义：
+
+```python
+class ActionSignal(str, Enum):
+    BUY = "buy"
+    SELL = "sell"
+    HOLD = "hold"
+    REDUCE = "reduce"
+    AVOID = "avoid"
+```
+
+---
+
+### 示例调用
+
+```python
+signals = compute_action_signals(features, config_bundle)
+features["action_signal"] = signals
+```
+
+---
+
+## 🧠 六、核心概念
+
+### 1️⃣ State（结构层）
+
+```
+macro_state   → risk_on / neutral / risk_off
+sector_state  → leading / mixed / weak
+symbol_state  → trend / pullback / range / risk
+```
+
+👉 表示“市场处于什么结构”
+
+---
+
+### 2️⃣ Action Signal（意图层）
+
+```
+BUY / SELL / HOLD / REDUCE / AVOID
+```
+
+👉 表示“应该做什么”
+
+⚠️ 不包含仓位信息
+
+---
+
+### 3️⃣ Position（执行层，未来）
+
+```
+买多少 / 卖多少 / 不动
+```
+
+👉 独立模块处理（风控 + 仓位）
+
+---
+
+## 🧭 七、设计原则
+
+1. 不预测价格，只识别结构  
+2. state 决定一切（state-driven system）  
+3. signal（意图）与 position（执行）解耦  
+4. 多频数据统一对齐到 symbol 时间轴  
+5. 避免未来数据（仅 forward fill）
+
+---
+
+## 🔥 八、完整使用流程
+
+```python
+# Step 1: 特征构建
+features = build_feature_frame(...)
+
+# Step 2: 信号生成
+signals = compute_action_signals(features, config_bundle)
+
+# Step 3: 合并
+features["action_signal"] = signals
+```
+
+---
+
+## 🚀 九、系统阶段
+
+当前已完成：
+
+```
+✔ feature_engine
+✔ state（macro / sector / symbol）
+✔ signal_engine（action_signal）
+```
+
+下一步：
+
+```
+→ position_engine（仓位 + 风控）
+```
+
+---
+
+## 🧩 十、一句话总结
+
+```
+state → signal → position
+```
+
+这是一个**结构驱动的交易系统**，而不是预测系统。

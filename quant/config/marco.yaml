@@ -1,0 +1,19 @@
+indicators:
+  spy_return_window: 1
+  spy_z_window: 20
+  vix_z_window: 20
+  credit_z_window: 20
+
+factors:
+  trend_scale: 1.0
+  vol_scale: 1.0
+  credit_scale: 1.0
+
+contexts:
+  vol_weight: 0.6
+  credit_weight: 0.4
+
+state:
+  risk_off_threshold: 0.7
+  risk_on_max_risk: 0.4
+  risk_on_trend_threshold: 0.2
