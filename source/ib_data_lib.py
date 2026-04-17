@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
-from ib_insync import IB, Stock, util
+from ib_insync import IB, Stock, Index, util
 
 from config import FILE_FORMAT, IB_CLIENT_ID, IB_HOST, IB_PORT, get_historical_dir
 
@@ -28,8 +28,19 @@ def connect_ib(host: str = IB_HOST, port: int = IB_PORT, client_id: int = IB_CLI
     return ib
 
 
-def get_stock_contract(symbol: str) -> Stock:
-    return Stock(symbol.upper(), "SMART", "USD")
+def get_contract(symbol: str):
+    sym = symbol.upper()
+
+    # --- Macro index contracts ---
+    if sym == "VIX":
+        return Index(sym, "CBOE", "USD")
+
+    # 如果以后你还要加别的指数，也放这里
+    # if sym == "SPX":
+    #     return Index(sym, "CBOE", "USD")
+
+    # --- Default: stock / ETF ---
+    return Stock(sym, "SMART", "USD")
 
 
 def _file_ext(file_format: str) -> str:
@@ -103,8 +114,11 @@ def _fetch_history(
     what_to_show: str = DEFAULT_WHAT_TO_SHOW,
     use_rth: bool = True,
 ) -> pd.DataFrame:
-    contract = get_stock_contract(symbol)
-    ib.qualifyContracts(contract)
+    contract = get_contract(symbol)
+
+    qualified = ib.qualifyContracts(contract)
+    if not qualified:
+        raise ValueError(f"Unable to qualify contract for symbol={symbol}: {contract}")
 
     bars = ib.reqHistoricalData(
         contract,
@@ -115,7 +129,12 @@ def _fetch_history(
         useRTH=use_rth,
         formatDate=1,
     )
-    return _normalize_bars_to_df(bars)
+
+    df = _normalize_bars_to_df(bars)
+    if df is None or df.empty:
+        raise ValueError(f"No historical data returned for symbol={symbol}, contract={contract}")
+
+    return df
 
 
 def fetch_month_history(

@@ -8,6 +8,7 @@
 
 ```bash
 python3 -m pipeline.ingestion --sector uranium
+python3 -m pipeline.ingestion --marco
 ```
 
 行为说明
@@ -25,13 +26,17 @@ python3 -m pipeline.ingestion --sector uranium
 
 ```bash
 python3 -m pipeline.ingestion_backfill backfill-year --sector uranium --year 2025
+python3 -m pipeline.ingestion_backfill backfill-year --macro --year 2025
+python3 -m pipeline.ingestion_backfill backfill-year --symbol UUUU --year 2025
 ```
 ## 🚀 📆 2. 回填单月数据（Backfill Month）
  
 ### 命令
 
 ```bash
+python3 -m pipeline.ingestion_backfill backfill-month --symbol UUUU --month 2025-01
 python3 -m pipeline.ingestion_backfill backfill-month --sector uranium --month 2025-01
+python3 -m pipeline.ingestion_backfill backfill-month --macro --month 2025-01
 ```
 行为说明
 	•	拉取指定月份的数据
@@ -43,3 +48,8 @@ python3 -m pipeline.ingestion_backfill backfill-month --sector uranium --month 2
 	•	存储位置：meta_symbol_offset 表
 	•	如果 symbol 没有 offset：默认从 2025-01-01 开始拉取
     •	当前 business day 定义：周一到周五（暂未处理节假日）
+
+## 🚀  3. backtest
+```bash
+python3 -m pipeline.backtest --symbol UUUU --sector rare_earth  --sector-etf REMX --start-date 2025-01-01 --end-date 2025-12-31
+```

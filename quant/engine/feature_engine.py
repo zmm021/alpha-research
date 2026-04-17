@@ -156,6 +156,7 @@ def build_feature_frame(
     # SYMBOL LAYER
     # =========================
     symbol_ind = compute_symbol_indicators(symbol_df, symbol_config)
+ 
     symbol_fac = compute_symbol_factors(symbol_ind, symbol_config)
     symbol_ctx = compute_symbol_contexts(symbol_fac, symbol_config)
     symbol_state = compute_symbol_states(symbol_ctx, symbol_config)

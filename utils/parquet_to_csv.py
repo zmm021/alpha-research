@@ -55,6 +55,36 @@ def export_recent_csv(
     print(f"Date range: {recent['date'].min()} -> {recent['date'].max()}")
 
 
+def export_dataframe_to_csv(
+    df: pd.DataFrame,
+    out_path: str | Path,
+    include_index: bool = True,
+    encoding: str = "utf-8-sig",
+) -> Path:
+    """
+    Export any dataframe to csv.
+
+    Supports:
+    - wide dataframe with many columns
+    - index export
+    - auto create parent folder
+    """
+    if df is None:
+        raise ValueError("Input dataframe is None")
+
+    if df.empty:
+        raise ValueError("Input dataframe is empty")
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    df.to_csv(
+        out_path,
+        index=include_index,
+        encoding=encoding,
+    )
+
+    return out_path
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export recent parquet market data to CSV")
     parser.add_argument("--symbol", required=True, help="e.g. UUUU")

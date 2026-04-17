@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Iterable
+from typing import Final
 
 import pandas as pd
 
-from quant.indicator_names import (
-    COL_CLOSE,
-    COL_DATE,
-    COL_HIGH,
-    COL_LOW,
-    COL_OPEN,
-    COL_VOLUME,
-)
 
+# =========================
+# Canonical Bar Columns
+# =========================
+
+COL_DATE: Final[str] = "date"
+COL_OPEN: Final[str] = "open"
+COL_HIGH: Final[str] = "high"
+COL_LOW: Final[str] = "low"
+COL_CLOSE: Final[str] = "close"
+COL_VOLUME: Final[str] = "volume"
+
+
+# =========================
+# Frequency Enum
+# =========================
 
 class BarFrequency(str, Enum):
     MIN_1 = "1min"
@@ -24,144 +31,42 @@ class BarFrequency(str, Enum):
     DAY_1 = "1d"
 
 
-DEFAULT_OHLCV_COLUMNS = (
-    COL_DATE,
-    COL_OPEN,
-    COL_HIGH,
-    COL_LOW,
-    COL_CLOSE,
-    COL_VOLUME,
-)
+_PANDAS_FREQ_MAP: dict[BarFrequency, str] = {
+    BarFrequency.MIN_1: "1min",
+    BarFrequency.MIN_5: "5min",
+    BarFrequency.MIN_15: "15min",
+    BarFrequency.MIN_30: "30min",
+    BarFrequency.HOUR_1: "1h",
+    BarFrequency.DAY_1: "1D",
+}
 
 
-def aggregate_ohlcv_bars(
-    df: pd.DataFrame,
-    *,
-    target_freq: BarFrequency,
-    date_col: str = COL_DATE,
-    session_col: str | None = None,
-    keep_partial_last_bar: bool = True,
-) -> pd.DataFrame:
-    """
-    Aggregate a single-symbol OHLCV time series into a target bar frequency.
+# =========================
+# Helpers
+# =========================
 
-    Input:
-    - one symbol only
-    - must contain date/open/high/low/close/volume
-
-    Output:
-    - aggregated OHLCV DataFrame
-    """
-    out = _validate_ohlcv_input(df, date_col=date_col)
-    out = out.sort_values(date_col).reset_index(drop=True)
-
-    if session_col is not None and session_col in out.columns:
-        parts = []
-        for _, g in out.groupby(session_col, sort=False):
-            agg = _aggregate_single_block(
-                g,
-                target_freq=target_freq,
-                date_col=date_col,
-                keep_partial_last_bar=keep_partial_last_bar,
-            )
-            parts.append(agg)
-        if not parts:
-            return _empty_ohlcv_frame()
-        return pd.concat(parts, ignore_index=True)
-
-    return _aggregate_single_block(
-        out,
-        target_freq=target_freq,
-        date_col=date_col,
-        keep_partial_last_bar=keep_partial_last_bar,
-    )
+def _require_columns(df: pd.DataFrame, required: list[str], name: str) -> None:
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"{name} missing required columns: {missing}")
 
 
-def aggregate_ohlcv_bars_by_symbol(
-    df: pd.DataFrame,
-    *,
-    symbol_col: str = "symbol",
-    target_freq: BarFrequency,
-    date_col: str = COL_DATE,
-    session_col: str | None = None,
-    keep_partial_last_bar: bool = True,
-) -> pd.DataFrame:
-    """
-    Aggregate a multi-symbol OHLCV DataFrame.
-
-    Required columns:
-    - symbol_col
-    - date/open/high/low/close/volume
-    """
-    if symbol_col not in df.columns:
-        raise ValueError(f"Missing required symbol column: {symbol_col}")
-
-    parts = []
-    for symbol, g in df.groupby(symbol_col, sort=False):
-        agg = aggregate_ohlcv_bars(
-            g,
-            target_freq=target_freq,
-            date_col=date_col,
-            session_col=session_col,
-            keep_partial_last_bar=keep_partial_last_bar,
-        )
-        if not agg.empty:
-            agg.insert(0, symbol_col, symbol)
-            parts.append(agg)
-
-    if not parts:
-        return pd.DataFrame(columns=[symbol_col, *DEFAULT_OHLCV_COLUMNS])
-
-    return pd.concat(parts, ignore_index=True)
-
-
-def filter_recent_bars(
-    df: pd.DataFrame,
-    *,
-    n_bars: int,
-    date_col: str = COL_DATE,
-) -> pd.DataFrame:
-    """
-    Keep only the most recent n bars.
-    """
-    if n_bars <= 0:
-        raise ValueError("n_bars must be > 0")
+def _ensure_datetime_col(df: pd.DataFrame, date_col: str) -> pd.DataFrame:
+    if date_col not in df.columns:
+        raise ValueError(f"Missing datetime column: {date_col}")
 
     out = df.copy()
-    out[date_col] = pd.to_datetime(out[date_col])
-    out = out.sort_values(date_col).reset_index(drop=True)
-    return out.tail(n_bars).reset_index(drop=True)
+    out[date_col] = pd.to_datetime(out[date_col], utc=True, errors="coerce")
 
-
-def align_bar_window(
-    df: pd.DataFrame,
-    *,
-    end_time: str | pd.Timestamp | None = None,
-    n_bars: int | None = None,
-    date_col: str = COL_DATE,
-) -> pd.DataFrame:
-    """
-    Slice a time series up to end_time, then optionally keep only the last n bars.
-
-    Useful for:
-    - offline snapshot as_of
-    - realtime rolling window
-    """
-    out = df.copy()
-    out[date_col] = pd.to_datetime(out[date_col])
-    out = out.sort_values(date_col).reset_index(drop=True)
-
-    if end_time is not None:
-        end_ts = pd.to_datetime(end_time)
-        out = out[out[date_col] <= end_ts].reset_index(drop=True)
-
-    if n_bars is not None:
-        if n_bars <= 0:
-            raise ValueError("n_bars must be > 0")
-        out = out.tail(n_bars).reset_index(drop=True)
+    if out[date_col].isna().any():
+        raise ValueError(f"Failed to parse some datetime values in column: {date_col}")
 
     return out
 
+
+# =========================
+# Public APIs
+# =========================
 
 def infer_session_date(
     df: pd.DataFrame,
@@ -170,93 +75,118 @@ def infer_session_date(
     output_col: str = "session_date",
 ) -> pd.DataFrame:
     """
-    Add a simple session_date column based on local calendar date.
-
-    Useful when you want to aggregate intraday bars separately by trading day.
+    Add a session_date column from datetime column.
+    Useful before intraday aggregation.
     """
-    out = df.copy()
-    out[date_col] = pd.to_datetime(out[date_col])
-    out[output_col] = out[date_col].dt.floor("D")
+    out = _ensure_datetime_col(df, date_col)
+    out[output_col] = out[date_col].dt.strftime("%Y-%m-%d")
     return out
 
 
-def _aggregate_single_block(
+def aggregate_ohlcv_bars(
     df: pd.DataFrame,
     *,
     target_freq: BarFrequency,
-    date_col: str,
-    keep_partial_last_bar: bool,
+    date_col: str = COL_DATE,
+    session_col: str = "session_date",
+    keep_partial_last_bar: bool = True,
 ) -> pd.DataFrame:
-    if df.empty:
-        return _empty_ohlcv_frame()
+    """
+    Aggregate lower-frequency OHLCV bars from raw/intraday bars.
 
-    rule = _to_pandas_rule(target_freq)
+    Required columns:
+      - date
+      - open
+      - high
+      - low
+      - close
+      - volume
 
-    out = df.copy()
-    out[date_col] = pd.to_datetime(out[date_col])
+    Notes:
+    - For intraday aggregation, aggregation is done within each session_date.
+    - For daily aggregation, session_col is not required.
+    """
+    _require_columns(
+        df,
+        [date_col, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME],
+        "aggregate_ohlcv_bars input",
+    )
+
+    if target_freq not in _PANDAS_FREQ_MAP:
+        raise ValueError(f"Unsupported target frequency: {target_freq}")
+
+    out = _ensure_datetime_col(df, date_col).copy()
     out = out.sort_values(date_col).reset_index(drop=True)
-    out = out.set_index(date_col)
 
-    agg = out.resample(
-        rule=rule,
-        label="right",
-        closed="right",
-    ).agg(
-        {
-            COL_OPEN: "first",
-            COL_HIGH: "max",
-            COL_LOW: "min",
-            COL_CLOSE: "last",
-            COL_VOLUME: "sum",
-        }
-    )
+    pandas_freq = _PANDAS_FREQ_MAP[target_freq]
 
-    agg = agg.dropna(subset=[COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE])
+    # =========================
+    # Daily bars
+    # =========================
+    if target_freq == BarFrequency.DAY_1:
+        grouped = (
+            out.set_index(date_col)
+            .resample(pandas_freq)
+            .agg(
+                {
+                    COL_OPEN: "first",
+                    COL_HIGH: "max",
+                    COL_LOW: "min",
+                    COL_CLOSE: "last",
+                    COL_VOLUME: "sum",
+                }
+            )
+            .dropna(subset=[COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE])
+            .reset_index()
+        )
+        return grouped
 
-    if not keep_partial_last_bar and not agg.empty:
-        last_bar_end = agg.index[-1]
-        last_src_time = out.index[-1]
-        if last_src_time < last_bar_end:
-            agg = agg.iloc[:-1]
+    # =========================
+    # Intraday bars
+    # =========================
+    if session_col not in out.columns:
+        raise ValueError(
+            f"session_col '{session_col}' not found. "
+            f"Run infer_session_date(...) before aggregation."
+        )
 
-    return agg.reset_index()
+    frames: list[pd.DataFrame] = []
 
+    for session_value, session_df in out.groupby(session_col, sort=True):
+        session_df = session_df.sort_values(date_col).copy()
 
-def _validate_ohlcv_input(
-    df: pd.DataFrame,
-    *,
-    date_col: str,
-) -> pd.DataFrame:
-    required = {date_col, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Missing required OHLCV columns: {sorted(missing)}")
+        agg_df = (
+            session_df.set_index(date_col)
+            .resample(
+                pandas_freq,
+                label="right",
+                closed="right",
+            )
+            .agg(
+                {
+                    COL_OPEN: "first",
+                    COL_HIGH: "max",
+                    COL_LOW: "min",
+                    COL_CLOSE: "last",
+                    COL_VOLUME: "sum",
+                }
+            )
+            .dropna(subset=[COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE])
+            .reset_index()
+        )
 
-    out = df.copy()
-    out[date_col] = pd.to_datetime(out[date_col])
-    return out
+        if not keep_partial_last_bar and not agg_df.empty:
+            last_ts = session_df[date_col].max()
+            expected_end = agg_df[date_col].iloc[-1]
+            if expected_end > last_ts:
+                agg_df = agg_df.iloc[:-1]
 
+        agg_df[session_col] = session_value
+        frames.append(agg_df)
 
-def _to_pandas_rule(freq: BarFrequency) -> str:
-    mapping = {
-        BarFrequency.MIN_1: "1min",
-        BarFrequency.MIN_5: "5min",
-        BarFrequency.MIN_15: "15min",
-        BarFrequency.MIN_30: "30min",
-        BarFrequency.HOUR_1: "1h",
-        BarFrequency.DAY_1: "1D",
-    }
-    return mapping[freq]
+    if not frames:
+        return pd.DataFrame(columns=[date_col, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_VOLUME, session_col])
 
-
-def _empty_ohlcv_frame() -> pd.DataFrame:
-    return pd.DataFrame(
-        columns=[
-            COL_DATE,
-            COL_OPEN,
-            COL_HIGH,
-            COL_LOW,
-            COL_CLOSE,
-            COL_VOLUME,
-        ]
-    )
+    result = pd.concat(frames, ignore_index=True)
+    result = result.sort_values(date_col).reset_index(drop=True)
+    return result

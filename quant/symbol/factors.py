@@ -10,7 +10,6 @@ from quant.common.types import ConfigDict
 # =========================
 # Helpers
 # =========================
-
 def _safe_sign(series: pd.Series) -> pd.Series:
     return series.apply(lambda x: 1.0 if x > 0 else (-1.0 if x < 0 else 0.0))
 
@@ -18,7 +17,6 @@ def _safe_sign(series: pd.Series) -> pd.Series:
 # =========================
 # Core
 # =========================
-
 def compute_symbol_factors(
     indicator_df: pd.DataFrame,
     config: ConfigDict,
@@ -35,7 +33,9 @@ def compute_symbol_factors(
     ]
     missing = [c for c in required_cols if c not in indicator_df.columns]
     if missing:
-        raise ValueError(f"Missing required indicator columns for symbol factors: {missing}")
+        raise ValueError(
+            f"Missing required indicator columns for symbol factors: {missing}"
+        )
 
     factor_cfg = config["factors"]
 
@@ -72,6 +72,10 @@ def compute_symbol_factors(
         + trend_slope_weight * slope_direction
     )
 
+    # NEW: explicit slope factor
+    # Used to detect weakening / reversal even when overall trend factor is still positive.
+    out[Factors.SYMBOL_TREND_SLOPE_FACTOR] = trend_scale * slope_direction
+
     # ===== Volatility factor =====
     out[Factors.SYMBOL_VOLATILITY_FACTOR] = volatility_scale * atr_pct
 
@@ -79,6 +83,8 @@ def compute_symbol_factors(
     out[Factors.SYMBOL_LIQUIDITY_FACTOR] = liquidity_scale * volume_ratio
 
     # ===== Position factor =====
+    # distance_to_high is usually <= 0 when below highs
+    # negate it so higher value = closer to highs / stronger position
     out[Factors.SYMBOL_POSITION_FACTOR] = position_scale * (-distance_to_high)
 
     # ===== Intraday intent factor =====
@@ -96,6 +102,7 @@ def compute_symbol_contexts(
 ) -> pd.DataFrame:
     required_cols = [
         Factors.SYMBOL_TREND_FACTOR,
+        Factors.SYMBOL_TREND_SLOPE_FACTOR,
         Factors.SYMBOL_VOLATILITY_FACTOR,
         Factors.SYMBOL_LIQUIDITY_FACTOR,
         Factors.SYMBOL_POSITION_FACTOR,
@@ -103,7 +110,9 @@ def compute_symbol_contexts(
     ]
     missing = [c for c in required_cols if c not in factor_df.columns]
     if missing:
-        raise ValueError(f"Missing required factor columns for symbol contexts: {missing}")
+        raise ValueError(
+            f"Missing required factor columns for symbol contexts: {missing}"
+        )
 
     context_cfg = config["contexts"]
 
@@ -116,12 +125,14 @@ def compute_symbol_contexts(
     out = pd.DataFrame(index=factor_df.index)
 
     trend_factor = factor_df[Factors.SYMBOL_TREND_FACTOR]
+    trend_slope_factor = factor_df[Factors.SYMBOL_TREND_SLOPE_FACTOR]
     volatility_factor = factor_df[Factors.SYMBOL_VOLATILITY_FACTOR]
     liquidity_factor = factor_df[Factors.SYMBOL_LIQUIDITY_FACTOR]
     position_factor = factor_df[Factors.SYMBOL_POSITION_FACTOR]
     intraday_factor = factor_df[Factors.SYMBOL_INTRADAY_INTENT_FACTOR]
 
     out[Contexts.SYMBOL_TREND_STRENGTH] = trend_factor
+    out[Contexts.SYMBOL_TREND_SLOPE] = trend_slope_factor
     out[Contexts.SYMBOL_VOLATILITY_STATE] = volatility_factor
     out[Contexts.SYMBOL_POSITION_QUALITY] = position_factor
     out[Contexts.SYMBOL_INTRADAY_INTENT] = intraday_factor
@@ -138,6 +149,14 @@ def compute_symbol_contexts(
         failure_vol_weight * volatility_factor.clip(lower=0.0)
         + failure_intraday_weight * (-intraday_factor).clip(lower=0.0)
     )
+
+    # NEW:
+    # reversal pressure = trend slope rolling over + intraday intent turning negative
+    # used for late-trend / breakdown / failed breakout detection
+    out[Contexts.SYMBOL_REVERSAL_PRESSURE] = (
+        (-trend_slope_factor).clip(lower=0.0)
+        + (-intraday_factor).clip(lower=0.0)
+    ) / 2.0
 
     return out
 

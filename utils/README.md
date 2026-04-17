@@ -153,10 +153,113 @@ df = prepare_bar_window(
 ```
 
 ---
+## 📦 4️⃣ parquet_loader.py
+
+用于从本地 `data/market` 目录加载 parquet 行情数据，支持：
+
+- 单 symbol
+- sector（多 symbol）
+- macro（多 symbol）
+- 按时间区间加载（`start_date` / `end_date`）
+- 频率聚合（1min → 5min / 1h / 1d）
+- 严格模式下缺失文件直接报错
+
+---
+
+### 🚀 使用方式
+
+#### 1. 单个 Symbol
+
+```python
+from utils.parquet_loader import load_symbol_bars
+from utils.bar_utls import BarFrequency
+
+df = load_symbol_bars(
+    base_path="data/market",
+    symbol="UUUU",
+    start_date="2025-01-01",
+    end_date="2025-03-31",
+    target_freq=BarFrequency.MIN_5,
+    strict=True,
+)
+```
+#### 2. Sector（返回多个序列）
+```python
+from utils.parquet_loader import load_sector_bars
+from utils.bar_utls import BarFrequency
+
+sector_data = load_sector_bars(
+    base_path="data/market",
+    sector_name="rare-earth",
+    start_date="2025-01-01",
+    end_date="2025-03-31",
+    target_freq=BarFrequency.DAY_1,
+    strict=True,
+)
+
+--return dict[str, pd.DataFrame]
+```
+#### 3. Macro（返回多个序列）
+```python
+from utils.parquet_loader import load_macro_bars
+from utils.bar_utls import BarFrequency
+
+macro_data = load_macro_bars(
+    base_path="data/market",
+    start_date="2025-01-01",
+    end_date="2025-03-31",
+    target_freq=BarFrequency.DAY_1,
+    strict=True,
+)
+
+--return dict[str, pd.DataFrame]
+```
+
+---
+
+### ⚙️ 功能说明
+
+- 按目录结构自动加载 parquet：
+
+```
+data/market/{symbol}/historical/YYYY/YYYY-MM/YYYY-MM-DD.parquet
+```
+
+	
+	•	自动拼接多天数据
+	•	支持多 symbol 批量加载（sector / macro）
+	•	支持频率聚合（通过 BarFrequency）
+	•	返回标准化 bar 数据（统一 schema）
+	•	sector / macro 的 symbol 列表来自 postgres.meta_repo
+	•	默认支持三种时间模式：
+	•	start_date + end_date
+	•	year
+	•	month
+	•	strict=True 时，如果任意 business day 文件缺失，会直接报错
+	•	strict=False 时，允许跳过缺失文件
+
+---
+
+### 🧠 返回结构说明
+
+| 模式 | 返回类型 |
+|------|----------|
+| symbol | `pd.DataFrame` |
+| sector | `dict[str, pd.DataFrame]` |
+| macro | `dict[str, pd.DataFrame]` |
+
+---
+
+### 🔥 一句话总结
+
+```
+parquet_loader = 本地行情数据的统一读取入口（支持单标的 & 多标的）
+```
+
 
 # 🚀 总结
 
 - bar_utils：处理时间序列数据
 - parquet_to_csv：文件格式转换
 - parquet_chart：数据快速可视化
-
+- parquet_loader：数据快速可视化

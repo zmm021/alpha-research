@@ -23,29 +23,41 @@ def _parse_action(value: str) -> ActionSignal:
         raise ValueError(f"Invalid action config value: {value}") from exc
 
 
+def _normalize_state_value(value) -> str:
+    if value is None:
+        return ""
+
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+
+    if hasattr(value, "value"):
+        return str(value.value).lower()
+
+    return str(value).lower()
+
+
 def compute_action_signals(
     feature_df: pd.DataFrame,
     config: dict,
 ) -> pd.Series:
     """
-    Compute action signals from feature frame.
-
-    Input:
-        feature_df: output of feature_engine
-        config: signal config dict
-                expected shape:
-                {
-                    "signal": {...}
-                }
-                or directly:
-                {
-                    "enable_risk_filter": ...
-                }
-
-    Output:
-        pd.Series[ActionSignal]
+    Compute action signals from unified feature frame.
     """
+
     _validate_required_columns(feature_df)
+    print("\n=== symbol_state value counts ===")
+    print(feature_df["symbol_state"].value_counts(dropna=False))
+
+    print("\n=== sector_state_sector value counts ===")
+    print(feature_df["sector_state_sector"].value_counts(dropna=False))
+
+    print("\n=== macro_state_macro value counts ===")
+    print(feature_df["macro_state_macro"].value_counts(dropna=False))
+
+    signal_cfg = config.get("signal", config)
 
     signal_cfg = config.get("signal", config)
 
@@ -72,9 +84,9 @@ def compute_action_signals(
     signals: list[ActionSignal] = []
 
     for i in range(len(feature_df)):
-        m = str(macro_state.iloc[i])
-        s = str(sector_state.iloc[i])
-        sym = str(symbol_state.iloc[i])
+        m = _normalize_state_value(macro_state.iloc[i])
+        s = _normalize_state_value(sector_state.iloc[i])
+        sym = _normalize_state_value(symbol_state.iloc[i])
 
         # 1. Macro gating
         if enable_risk_filter and m == "risk_off":
@@ -83,21 +95,25 @@ def compute_action_signals(
 
         # 2. Sector gating
         if enable_sector_filter and s == "weak":
-            signals.append(ActionSignal.AVOID)
-            continue
+            if sym in ["range_distribution", "risk_rising", "trend_late"]:
+                signals.append(ActionSignal.REDUCE)
+                continue
 
         # 3. Symbol mapping
-        if sym == "trend":
-            if allow_trend_buy:
-                signals.append(ActionSignal.BUY)
-            else:
-                signals.append(default_action)
+        if sym == "trend_early":
+            signals.append(ActionSignal.BUY if allow_trend_buy else default_action)
+
+        elif sym == "trend_continuation":
+            signals.append(ActionSignal.HOLD)
+
+        elif sym == "trend_late":
+            signals.append(ActionSignal.REDUCE)
+
+        elif sym == "trend_exhaustion":
+            signals.append(exhausted_action)
 
         elif sym == "pullback":
-            if allow_pullback_buy:
-                signals.append(ActionSignal.BUY)
-            else:
-                signals.append(default_action)
+            signals.append(ActionSignal.BUY if allow_pullback_buy else default_action)
 
         elif sym == "breakout_setup":
             if allow_breakout_buy:
@@ -108,14 +124,35 @@ def compute_action_signals(
             else:
                 signals.append(default_action)
 
-        elif sym == "exhausted":
-            signals.append(exhausted_action)
+        elif sym == "breakout":
+            if allow_breakout_buy:
+                if breakout_requires_non_weak_sector and s == "weak":
+                    signals.append(ActionSignal.AVOID)
+                else:
+                    signals.append(ActionSignal.BUY)
+            else:
+                signals.append(default_action)
+
+        elif sym == "breakout_failed":
+            signals.append(ActionSignal.SELL)
+
+        elif sym == "range_accumulation":
+            signals.append(ActionSignal.HOLD)
+
+        elif sym == "range_neutral":
+            signals.append(ActionSignal.HOLD)
+
+        elif sym == "range_distribution":
+            signals.append(ActionSignal.REDUCE)
+
+        elif sym == "risk_rising":
+            signals.append(ActionSignal.REDUCE)
+
+        elif sym == "risk_high":
+            signals.append(high_risk_action)
 
         elif sym == "breakdown_risk":
             signals.append(breakdown_action)
-
-        elif sym == "high_risk":
-            signals.append(high_risk_action)
 
         else:
             signals.append(default_action)

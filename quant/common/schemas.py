@@ -54,7 +54,7 @@ class ContextOutput:
 class StateOutput:
     macro_state: MacroState = MacroState.NEUTRAL
     sector_state: SectorState = SectorState.MIXED
-    symbol_state: SymbolState = SymbolState.RANGE
+    symbol_state: SymbolState = SymbolState.RANGE_NEUTRAL
     data_quality_state: DataQualityState = DataQualityState.OK
 
 

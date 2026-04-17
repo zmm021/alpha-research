@@ -32,53 +32,105 @@ def last_business_day_of_month(year: int, month: int) -> date:
     return d
 
 
-def run_backfill_year(sector: str, year: int) -> None:
+def resolve_symbols(
+    *,
+    sector: str | None,
+    macro: bool,
+    symbol: str | None,
+) -> tuple[str, list[str]]:
+    chosen = sum([bool(sector), bool(macro), bool(symbol)])
+    if chosen != 1:
+        raise ValueError("Provide exactly one of: --sector, --macro/--marco, --symbol")
+
+    if symbol:
+        return f"symbol={symbol}", [symbol.upper()]
+
+    if macro:
+        symbols = meta_repo.get_macro_symbols()
+        if not symbols:
+            raise ValueError("No macro symbols found")
+        return "macro", symbols
+
     symbols = meta_repo.get_sector_symbols(sector_name=sector, asset_type="stock")
+    if not symbols:
+        raise ValueError(f"No sector symbols found for sector={sector}")
+    return f"sector={sector}", symbols
+
+
+def run_backfill_year(
+    *,
+    sector: str | None,
+    macro: bool,
+    symbol: str | None,
+    year: int,
+) -> None:
+    source_label, symbols = resolve_symbols(
+        sector=sector,
+        macro=macro,
+        symbol=symbol,
+    )
     target_offset = last_business_day_of_year(year).strftime("%Y-%m-%d")
 
-    print(f"[INFO] Backfill year {year} for sector={sector}")
+    print(f"[INFO] Backfill year {year} for {source_label}")
     print(f"[INFO] Symbols: {symbols}")
     print(f"[INFO] Target offset: {target_offset}")
 
-    for symbol in symbols:
-        print(f"\n=== Backfill year {year} | {symbol} ===")
+    for sym in symbols:
+        print(f"\n=== Backfill year {year} | {sym} ===")
         try:
-            pull_year(symbol=symbol, year=year, use_rth=True)
-            meta_repo.update_offset(symbol, target_offset)
-            print(f"[OK] Updated offset for {symbol} -> {target_offset}")
+            pull_year(symbol=sym, year=year, use_rth=True)
+            meta_repo.update_offset(sym, target_offset)
+            print(f"[OK] Updated offset for {sym} -> {target_offset}")
         except Exception as e:
-            print(f"[ERROR] Failed year backfill for {symbol}: {e}")
+            print(f"[ERROR] Failed year backfill for {sym}: {e}")
 
 
-def run_backfill_month(sector: str, month_str: str) -> None:
+def run_backfill_month(
+    *,
+    sector: str | None,
+    macro: bool,
+    symbol: str | None,
+    month_str: str,
+) -> None:
     year, month = parse_month(month_str)
-    symbols = meta_repo.get_sector_symbols(sector_name=sector, asset_type="stock")
+    source_label, symbols = resolve_symbols(
+        sector=sector,
+        macro=macro,
+        symbol=symbol,
+    )
     target_offset = last_business_day_of_month(year, month).strftime("%Y-%m-%d")
 
-    print(f"[INFO] Backfill month {month_str} for sector={sector}")
+    print(f"[INFO] Backfill month {month_str} for {source_label}")
     print(f"[INFO] Symbols: {symbols}")
     print(f"[INFO] Target offset: {target_offset}")
 
-    for symbol in symbols:
-        print(f"\n=== Backfill month {month_str} | {symbol} ===")
+    for sym in symbols:
+        print(f"\n=== Backfill month {month_str} | {sym} ===")
         try:
-            pull_month(symbol=symbol, month=month_str, use_rth=True)
-            meta_repo.update_offset(symbol, target_offset)
-            print(f"[OK] Updated offset for {symbol} -> {target_offset}")
+            pull_month(symbol=sym, month=month_str, use_rth=True)
+            meta_repo.update_offset(sym, target_offset)
+            print(f"[OK] Updated offset for {sym} -> {target_offset}")
         except Exception as e:
-            print(f"[ERROR] Failed month backfill for {symbol}: {e}")
+            print(f"[ERROR] Failed month backfill for {sym}: {e}")
+
+
+def add_source_args(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--sector", help="Sector name, e.g. uranium")
+    group.add_argument("--macro", "--marco", action="store_true", help="Backfill all macro symbols")
+    group.add_argument("--symbol", help="Single symbol, e.g. UUUU")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Sector backfill pipeline")
+    parser = argparse.ArgumentParser(description="Backfill pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    p1 = subparsers.add_parser("backfill-year", help="Backfill one full year for a sector")
-    p1.add_argument("--sector", required=True)
+    p1 = subparsers.add_parser("backfill-year", help="Backfill one full year")
+    add_source_args(p1)
     p1.add_argument("--year", required=True, type=int)
 
-    p2 = subparsers.add_parser("backfill-month", help="Backfill one month for a sector")
-    p2.add_argument("--sector", required=True)
+    p2 = subparsers.add_parser("backfill-month", help="Backfill one month")
+    add_source_args(p2)
     p2.add_argument("--month", required=True, help="YYYY-MM")
 
     return parser
@@ -89,9 +141,19 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "backfill-year":
-        run_backfill_year(args.sector, args.year)
+        run_backfill_year(
+            sector=getattr(args, "sector", None),
+            macro=getattr(args, "macro", False),
+            symbol=getattr(args, "symbol", None),
+            year=args.year,
+        )
     elif args.command == "backfill-month":
-        run_backfill_month(args.sector, args.month)
+        run_backfill_month(
+            sector=getattr(args, "sector", None),
+            macro=getattr(args, "macro", False),
+            symbol=getattr(args, "symbol", None),
+            month_str=args.month,
+        )
     else:
         raise ValueError(f"Unsupported command: {args.command}")
 
