@@ -2,21 +2,19 @@ from __future__ import annotations
 
 import pandas as pd
 
-from quant.common.constants import Contexts, Factors, Indicators
+from quant.common.constants import Indicators
 from quant.common.schemas import ContextOutput, FactorOutput
 from quant.common.types import ConfigDict
 
+from quant.symbol.factors.common import require_indicator_columns
+from quant.symbol.factors.contexts import compute_symbol_context_frame
+from quant.symbol.factors.intraday import compute_intraday_factors
+from quant.symbol.factors.liquidity import compute_liquidity_factors
+from quant.symbol.factors.position import compute_position_factors
+from quant.symbol.factors.trend import compute_trend_factors
+from quant.symbol.factors.volatility import compute_volatility_factors
 
-# =========================
-# Helpers
-# =========================
-def _safe_sign(series: pd.Series) -> pd.Series:
-    return series.apply(lambda x: 1.0 if x > 0 else (-1.0 if x < 0 else 0.0))
 
-
-# =========================
-# Core
-# =========================
 def compute_symbol_factors(
     indicator_df: pd.DataFrame,
     config: ConfigDict,
@@ -32,70 +30,24 @@ def compute_symbol_factors(
         Indicators.PRICE_VS_VWAP,
         Indicators.RANGE_POSITION,
     ]
-    missing = [c for c in required_cols if c not in indicator_df.columns]
-    if missing:
-        raise ValueError(
-            f"Missing required indicator columns for symbol factors: {missing}"
-        )
+    require_indicator_columns(indicator_df, required_cols)
 
     factor_cfg = config["factors"]
 
-    trend_scale = float(factor_cfg["trend_scale"])
-    volatility_scale = float(factor_cfg["volatility_scale"])
-    liquidity_scale = float(factor_cfg["liquidity_scale"])
-    position_scale = float(factor_cfg["position_scale"])
-    intraday_scale = float(factor_cfg["intraday_scale"])
-
-    trend_cross_weight = float(factor_cfg["trend_cross_weight"])
-    trend_slope_weight = float(factor_cfg["trend_slope_weight"])
-
-    intraday_gap_weight = float(factor_cfg["intraday_gap_weight"])
-    intraday_vwap_weight = float(factor_cfg["intraday_vwap_weight"])
-
     out = pd.DataFrame(index=indicator_df.index)
 
-    ma20 = indicator_df[Indicators.MA20]
-    ma50 = indicator_df[Indicators.MA50]
-    ma20_slope = indicator_df[Indicators.MA20_SLOPE]
+    trend_df = compute_trend_factors(indicator_df, factor_cfg)
+    volatility_df = compute_volatility_factors(indicator_df, factor_cfg)
+    liquidity_df = compute_liquidity_factors(indicator_df, factor_cfg)
+    position_df = compute_position_factors(indicator_df, factor_cfg)
+    intraday_df = compute_intraday_factors(indicator_df, factor_cfg)
 
-    atr_pct = indicator_df[Indicators.ATR_PCT]
-    volume_ratio = indicator_df[Indicators.VOLUME_RATIO]
-    distance_to_high = indicator_df[Indicators.DISTANCE_TO_HIGH]
-    gap_pct = indicator_df[Indicators.GAP_PCT]
-    price_vs_vwap = indicator_df[Indicators.PRICE_VS_VWAP]
-    range_position = indicator_df[Indicators.RANGE_POSITION]
-
-    # ===== Trend factor =====
-    ma_cross_signal = (ma20 > ma50).astype(float) * 2.0 - 1.0
-    slope_direction = _safe_sign(ma20_slope.fillna(0.0))
-
-    out[Factors.SYMBOL_TREND_FACTOR] = trend_scale * (
-        trend_cross_weight * ma_cross_signal
-        + trend_slope_weight * slope_direction
-    )
-
-    # explicit slope factor
-    out[Factors.SYMBOL_TREND_SLOPE_FACTOR] = trend_scale * slope_direction
-
-    # ===== Volatility factor =====
-    out[Factors.SYMBOL_VOLATILITY_FACTOR] = volatility_scale * atr_pct
-
-    # ===== Liquidity factor =====
-    out[Factors.SYMBOL_LIQUIDITY_FACTOR] = liquidity_scale * volume_ratio
-
-    # ===== Position factor =====
-    # distance_to_high is usually <= 0 when below highs
-    # negate it so higher value = closer to highs / stronger position
-    out[Factors.SYMBOL_POSITION_FACTOR] = position_scale * (-distance_to_high)
-
-    # ===== Range position factor =====
-    # 0 = near lower bound, 1 = near upper bound
-    out[Factors.SYMBOL_RANGE_POSITION_FACTOR] = range_position.clip(0.0, 1.0)
-
-    # ===== Intraday intent factor =====
-    out[Factors.SYMBOL_INTRADAY_INTENT_FACTOR] = intraday_scale * (
-        intraday_gap_weight * gap_pct
-        + intraday_vwap_weight * price_vs_vwap
+    out = (
+        out.join(trend_df)
+        .join(volatility_df)
+        .join(liquidity_df)
+        .join(position_df)
+        .join(intraday_df)
     )
 
     return out
@@ -105,66 +57,7 @@ def compute_symbol_contexts(
     factor_df: pd.DataFrame,
     config: ConfigDict,
 ) -> pd.DataFrame:
-    required_cols = [
-        Factors.SYMBOL_TREND_FACTOR,
-        Factors.SYMBOL_TREND_SLOPE_FACTOR,
-        Factors.SYMBOL_VOLATILITY_FACTOR,
-        Factors.SYMBOL_LIQUIDITY_FACTOR,
-        Factors.SYMBOL_POSITION_FACTOR,
-        Factors.SYMBOL_RANGE_POSITION_FACTOR,
-        Factors.SYMBOL_INTRADAY_INTENT_FACTOR,
-    ]
-    missing = [c for c in required_cols if c not in factor_df.columns]
-    if missing:
-        raise ValueError(
-            f"Missing required factor columns for symbol contexts: {missing}"
-        )
-
-    context_cfg = config["contexts"]
-
-    exhaustion_position_weight = float(context_cfg["exhaustion_position_weight"])
-    exhaustion_intraday_weight = float(context_cfg["exhaustion_intraday_weight"])
-
-    failure_vol_weight = float(context_cfg["failure_vol_weight"])
-    failure_intraday_weight = float(context_cfg["failure_intraday_weight"])
-
-    out = pd.DataFrame(index=factor_df.index)
-
-    trend_factor = factor_df[Factors.SYMBOL_TREND_FACTOR]
-    trend_slope_factor = factor_df[Factors.SYMBOL_TREND_SLOPE_FACTOR]
-    volatility_factor = factor_df[Factors.SYMBOL_VOLATILITY_FACTOR]
-    liquidity_factor = factor_df[Factors.SYMBOL_LIQUIDITY_FACTOR]
-    position_factor = factor_df[Factors.SYMBOL_POSITION_FACTOR]
-    range_position_factor = factor_df[Factors.SYMBOL_RANGE_POSITION_FACTOR]
-    intraday_factor = factor_df[Factors.SYMBOL_INTRADAY_INTENT_FACTOR]
-
-    out[Contexts.SYMBOL_TREND_STRENGTH] = trend_factor
-    out[Contexts.SYMBOL_TREND_SLOPE] = trend_slope_factor
-    out[Contexts.SYMBOL_VOLATILITY_STATE] = volatility_factor
-    out[Contexts.SYMBOL_POSITION_QUALITY] = position_factor
-    out[Contexts.SYMBOL_RANGE_POSITION] = range_position_factor
-    out[Contexts.SYMBOL_INTRADAY_INTENT] = intraday_factor
-    out[Contexts.SYMBOL_LIQUIDITY_QUALITY] = liquidity_factor
-
-    # close to highs + strong push => exhaustion risk
-    out[Contexts.SYMBOL_EXHAUSTION_RISK] = (
-        exhaustion_position_weight * position_factor.clip(lower=0.0)
-        + exhaustion_intraday_weight * intraday_factor.clip(lower=0.0)
-    )
-
-    # high vol + negative intraday intent => failure risk
-    out[Contexts.SYMBOL_FAILURE_RISK] = (
-        failure_vol_weight * volatility_factor.clip(lower=0.0)
-        + failure_intraday_weight * (-intraday_factor).clip(lower=0.0)
-    )
-
-    # reversal pressure = trend slope rolling over + intraday intent turning negative
-    out[Contexts.SYMBOL_REVERSAL_PRESSURE] = (
-        (-trend_slope_factor).clip(lower=0.0)
-        + (-intraday_factor).clip(lower=0.0)
-    ) / 2.0
-
-    return out
+    return compute_symbol_context_frame(factor_df, config["contexts"])
 
 
 def compute_symbol_factor_output(
