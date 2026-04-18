@@ -53,3 +53,51 @@ python3 -m pipeline.ingestion_backfill backfill-month --macro --month 2025-01
 ```bash
 python3 -m pipeline.backtest --symbol UUUU --sector rare_earth  --sector-etf REMX --start-date 2025-01-01 --end-date 2025-12-31
 ```
+
+
+## 🚀  4. optimization 贝叶斯信号参数优
+
+该模块用于优化 Alpha Stack 中的信号参数（signal parameters），不影响现有的 backtest pipeline。
+
+---
+
+### 一、核心目标
+
+本优化模块的目标是：
+
+> 提升 **信号质量（signal quality）**，而不是预测价格或直接优化收益
+
+优化逻辑基于：
+
+- feature engine（特征计算）
+- signal engine（信号生成）
+- signal evaluator（信号评估）
+
+---
+
+### 二、整体流程
+
+每一轮（trial）执行以下步骤：
+
+1. 加载基础配置（config bundle）
+2. 生成一组候选参数（candidate params）
+3. 覆盖原始 config（仅覆盖部分参数）
+4. 构建 feature frame
+5. 生成 action signal（buy / sell / reduce / avoid）
+6. 使用 evaluator 计算信号质量评分
+7. Optuna 根据评分更新参数搜索策略
+
+---
+
+### 三、系统结构
+```bash
+python3 -m pipeline.optimization \
+  --symbol UUUU \
+  --sector rare_earth \
+  --sector-etf REMX \
+  --start-date 2025-01-01 \
+  --end-date 2025-12-31 \
+  --n-trials 20 \
+  --study-name uuuu_signal_opt
+  ```
+

@@ -21,7 +21,7 @@ from utils.parquet_to_csv import export_dataframe_to_csv
 DEFAULT_BASE_PATH = "data/market"
 DEFAULT_CONFIG_DIR = "quant/config"
 
-DEFAULT_SYMBOL_FREQ = "30min"
+DEFAULT_SYMBOL_FREQ = "15min"
 DEFAULT_SECTOR_FREQ = "1d"
 DEFAULT_MACRO_FREQ = "1d"
 
@@ -138,7 +138,8 @@ def _log_df(name: str, df: pd.DataFrame) -> None:
 def _build_default_output_path(symbol: str, start_date: str, end_date: str) -> Path:
     safe_start = start_date.replace("-", "")
     safe_end = end_date.replace("-", "")
-    file_name = f"{symbol}_exp_{safe_start}_{safe_end}.csv"
+    #file_name = f"{symbol}_exp_{safe_start}_{safe_end}.csv"
+    file_name = 'results.csv'
     return EXPERIMENT_DIR / file_name
 
 
@@ -236,6 +237,7 @@ def run_backtest_pipeline(
         hy_oas_df=hy_oas_df,
         config_bundle=config_bundle,
     )
+    print(feature_df["symbol_range_position"].describe())
     _log_df("feature_df", feature_df)
 
     # =========================

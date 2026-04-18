@@ -12,3 +12,8 @@ signal:
   breakdown_action: "sell"
   high_risk_action: "sell"
   default_action: "hold"
+  allow_range_buy: true
+  range_buy_threshold: 0.30
+  range_sell_threshold: 0.70
+  range_upper_action: sell
+  range_distribution_action: reduce

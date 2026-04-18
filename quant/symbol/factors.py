@@ -30,6 +30,7 @@ def compute_symbol_factors(
         Indicators.VOLUME_RATIO,
         Indicators.GAP_PCT,
         Indicators.PRICE_VS_VWAP,
+        Indicators.RANGE_POSITION,
     ]
     missing = [c for c in required_cols if c not in indicator_df.columns]
     if missing:
@@ -62,6 +63,7 @@ def compute_symbol_factors(
     distance_to_high = indicator_df[Indicators.DISTANCE_TO_HIGH]
     gap_pct = indicator_df[Indicators.GAP_PCT]
     price_vs_vwap = indicator_df[Indicators.PRICE_VS_VWAP]
+    range_position = indicator_df[Indicators.RANGE_POSITION]
 
     # ===== Trend factor =====
     ma_cross_signal = (ma20 > ma50).astype(float) * 2.0 - 1.0
@@ -72,8 +74,7 @@ def compute_symbol_factors(
         + trend_slope_weight * slope_direction
     )
 
-    # NEW: explicit slope factor
-    # Used to detect weakening / reversal even when overall trend factor is still positive.
+    # explicit slope factor
     out[Factors.SYMBOL_TREND_SLOPE_FACTOR] = trend_scale * slope_direction
 
     # ===== Volatility factor =====
@@ -86,6 +87,10 @@ def compute_symbol_factors(
     # distance_to_high is usually <= 0 when below highs
     # negate it so higher value = closer to highs / stronger position
     out[Factors.SYMBOL_POSITION_FACTOR] = position_scale * (-distance_to_high)
+
+    # ===== Range position factor =====
+    # 0 = near lower bound, 1 = near upper bound
+    out[Factors.SYMBOL_RANGE_POSITION_FACTOR] = range_position.clip(0.0, 1.0)
 
     # ===== Intraday intent factor =====
     out[Factors.SYMBOL_INTRADAY_INTENT_FACTOR] = intraday_scale * (
@@ -106,6 +111,7 @@ def compute_symbol_contexts(
         Factors.SYMBOL_VOLATILITY_FACTOR,
         Factors.SYMBOL_LIQUIDITY_FACTOR,
         Factors.SYMBOL_POSITION_FACTOR,
+        Factors.SYMBOL_RANGE_POSITION_FACTOR,
         Factors.SYMBOL_INTRADAY_INTENT_FACTOR,
     ]
     missing = [c for c in required_cols if c not in factor_df.columns]
@@ -129,12 +135,14 @@ def compute_symbol_contexts(
     volatility_factor = factor_df[Factors.SYMBOL_VOLATILITY_FACTOR]
     liquidity_factor = factor_df[Factors.SYMBOL_LIQUIDITY_FACTOR]
     position_factor = factor_df[Factors.SYMBOL_POSITION_FACTOR]
+    range_position_factor = factor_df[Factors.SYMBOL_RANGE_POSITION_FACTOR]
     intraday_factor = factor_df[Factors.SYMBOL_INTRADAY_INTENT_FACTOR]
 
     out[Contexts.SYMBOL_TREND_STRENGTH] = trend_factor
     out[Contexts.SYMBOL_TREND_SLOPE] = trend_slope_factor
     out[Contexts.SYMBOL_VOLATILITY_STATE] = volatility_factor
     out[Contexts.SYMBOL_POSITION_QUALITY] = position_factor
+    out[Contexts.SYMBOL_RANGE_POSITION] = range_position_factor
     out[Contexts.SYMBOL_INTRADAY_INTENT] = intraday_factor
     out[Contexts.SYMBOL_LIQUIDITY_QUALITY] = liquidity_factor
 
@@ -150,9 +158,7 @@ def compute_symbol_contexts(
         + failure_intraday_weight * (-intraday_factor).clip(lower=0.0)
     )
 
-    # NEW:
     # reversal pressure = trend slope rolling over + intraday intent turning negative
-    # used for late-trend / breakdown / failed breakout detection
     out[Contexts.SYMBOL_REVERSAL_PRESSURE] = (
         (-trend_slope_factor).clip(lower=0.0)
         + (-intraday_factor).clip(lower=0.0)

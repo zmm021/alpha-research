@@ -44,6 +44,9 @@ class Indicators:
     PRICE_VS_VWAP = "price_vs_vwap"
     RS_MOMENTUM_Z = "rs_momentum_z"
     VOL_TREND_Z = "vol_trend_z"
+    RANGE_LOW = "range_low"
+    RANGE_HIGH = "range_high"
+    RANGE_POSITION = "range_position"   
 
 class Factors:
     # ===== Macro factors =====
@@ -63,7 +66,7 @@ class Factors:
     SYMBOL_LIQUIDITY_FACTOR = "symbol_liquidity_factor"
     SYMBOL_POSITION_FACTOR = "symbol_position_factor"
     SYMBOL_INTRADAY_INTENT_FACTOR = "symbol_intraday_intent_factor"
-
+    SYMBOL_RANGE_POSITION_FACTOR = "symbol_range_position_factor"
 
 class Contexts:
     # ===== Macro contexts =====
@@ -84,3 +87,4 @@ class Contexts:
     SYMBOL_EXHAUSTION_RISK = "symbol_exhaustion_risk"
     SYMBOL_FAILURE_RISK = "symbol_failure_risk"
     SYMBOL_LIQUIDITY_QUALITY = "symbol_liquidity_quality"
+    SYMBOL_RANGE_POSITION = "symbol_range_position"
