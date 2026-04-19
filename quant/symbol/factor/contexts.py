@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from quant.common.constants import Contexts, Factors
-from quant.symbol.factors.common import require_factor_columns
+from quant.symbol.factor.common import require_factor_columns
 
 
 def compute_symbol_context_frame(

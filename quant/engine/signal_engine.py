@@ -13,10 +13,10 @@ from quant.common.enums import ActionSignal
 ENABLE_COOLDOWN = True
 
 # BUY 之后，短时间内不允许立刻 REDUCE / SELL
-BUY_TO_EXIT_COOLDOWN = timedelta(hours=1)
+BUY_TO_EXIT_COOLDOWN = timedelta(hours=3)
 
 # SELL / REDUCE 之后，短时间内不允许立刻 BUY
-EXIT_TO_BUY_COOLDOWN = timedelta(hours=1)
+EXIT_TO_BUY_COOLDOWN = timedelta(hours=3)
 
 # 若本次动作与上一次已发出的有效动作相同，则输出 HOLD
 EMIT_ONLY_ON_SWITCH = True
@@ -187,41 +187,66 @@ def _range_signal(
     default_action: ActionSignal,
 ) -> ActionSignal:
     """
-    区间逻辑：
-    - 下沿买
-    - 中间 hold
-    - 上沿 reduce / sell
+    区间逻辑（score版）：
+    - 先根据 range_position 计算连续 score
+    - 再把 score 映射成 buy / hold / reduce / sell
     """
     allow_range_buy = bool(signal_cfg.get("allow_range_buy", True))
 
-    range_buy_threshold = float(signal_cfg.get("range_buy_threshold", 0.30))
-    range_sell_threshold = float(signal_cfg.get("range_sell_threshold", 0.70))
+    if pd.isna(range_position):
+        return default_action
 
-    range_upper_action = _parse_action(
-        signal_cfg.get("range_upper_action", "sell")
-    )
-    range_distribution_action = _parse_action(
-        signal_cfg.get("range_distribution_action", "sell")
-    )
+    # =========================================================
+    # 1. range_position -> score
+    #    0   = 区间底部   -> +1
+    #    0.5 = 区间中部   -> 0
+    #    1   = 区间顶部   -> -1
+    # =========================================================
+    score = (0.5 - float(range_position)) * 2.0
 
-    macro_risk_off = macro_state == "risk_off"
-    sector_weak = sector_state == "weak"
+    # 可训练/可配置：score 放大系数
+    range_score_scale = float(signal_cfg.get("range_score_scale", 1.0))
+    score *= range_score_scale
 
-    # 极差环境下，区间内也不积极抄底
-    if macro_risk_off and sector_weak:
-        if range_position >= range_sell_threshold:
-            return ActionSignal.REDUCE
-        return ActionSignal.HOLD
+    # =========================================================
+    # 2. 宏观 / 板块环境削弱
+    #    注意：这里只是削弱，不是硬切
+    # =========================================================
+    if macro_state == "risk_off":
+        macro_range_penalty = float(signal_cfg.get("macro_range_penalty", 0.5))
+        score *= macro_range_penalty
 
-    if range_position >= range_sell_threshold:
-        if symbol_state == "range_distribution":
-            return range_distribution_action
-        return range_upper_action
+    if sector_state == "weak":
+        sector_range_penalty = float(signal_cfg.get("sector_range_penalty", 0.7))
+        score *= sector_range_penalty
 
-    if range_position <= range_buy_threshold:
-        if macro_risk_off or sector_weak:
+    # =========================================================
+    # 3. score -> signal
+    # =========================================================
+    buy_th = float(signal_cfg.get("range_buy_threshold", 0.6))
+    reduce_th = float(signal_cfg.get("range_reduce_threshold", -0.3))
+    sell_th = float(signal_cfg.get("range_sell_threshold", -0.6))
+
+    if score >= buy_th:
+        if macro_state == "risk_off" or sector_state == "weak":
             return ActionSignal.HOLD
         return ActionSignal.BUY if allow_range_buy else ActionSignal.HOLD
+
+    if score <= sell_th:
+        # 顶部极端弱化时，distribution 可以更激进
+        if symbol_state == "range_distribution":
+            range_distribution_action = _parse_action(
+                signal_cfg.get("range_distribution_action", "sell")
+            )
+            return range_distribution_action
+
+        range_upper_action = _parse_action(
+            signal_cfg.get("range_upper_action", "sell")
+        )
+        return range_upper_action
+
+    if score <= reduce_th:
+        return ActionSignal.REDUCE
 
     return ActionSignal.HOLD
 

@@ -6,12 +6,12 @@ from quant.common.constants import Fields
 from quant.common.schemas import IndicatorOutput
 from quant.common.types import ConfigDict
 
-from quant.symbol.indicators.common import require_symbol_ohlcv
-from quant.symbol.indicators.intraday import compute_intraday_indicators
-from quant.symbol.indicators.position import compute_position_indicators
-from quant.symbol.indicators.trend import compute_trend_indicators
-from quant.symbol.indicators.volatility import compute_volatility_indicators
-from quant.symbol.indicators.volume import compute_volume_indicators
+from quant.symbol.indicator.common import require_symbol_ohlcv
+from quant.symbol.indicator.intraday import compute_intraday_indicators
+from quant.symbol.indicator.position import compute_position_indicators
+from quant.symbol.indicator.trend import compute_trend_indicators
+from quant.symbol.indicator.volatility import compute_volatility_indicators
+from quant.symbol.indicator.volume import compute_volume_indicators
 
 
 def compute_symbol_indicators(

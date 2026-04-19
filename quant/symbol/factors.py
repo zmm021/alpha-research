@@ -6,13 +6,13 @@ from quant.common.constants import Indicators
 from quant.common.schemas import ContextOutput, FactorOutput
 from quant.common.types import ConfigDict
 
-from quant.symbol.factors.common import require_indicator_columns
-from quant.symbol.factors.contexts import compute_symbol_context_frame
-from quant.symbol.factors.intraday import compute_intraday_factors
-from quant.symbol.factors.liquidity import compute_liquidity_factors
-from quant.symbol.factors.position import compute_position_factors
-from quant.symbol.factors.trend import compute_trend_factors
-from quant.symbol.factors.volatility import compute_volatility_factors
+from quant.symbol.factor.common import require_indicator_columns
+from quant.symbol.factor.contexts import compute_symbol_context_frame
+from quant.symbol.factor.intraday import compute_intraday_factors
+from quant.symbol.factor.liquidity import compute_liquidity_factors
+from quant.symbol.factor.position import compute_position_factors
+from quant.symbol.factor.trend import compute_trend_factors
+from quant.symbol.factor.volatility import compute_volatility_factors
 
 
 def compute_symbol_factors(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from quant.common.constants import Factors, Indicators
-from quant.symbol.factors.common import safe_sign
+from quant.symbol.factor.common import safe_sign
 
 
 def compute_trend_factors(
