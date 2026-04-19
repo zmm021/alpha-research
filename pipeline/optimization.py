@@ -78,38 +78,64 @@ def _json_safe(obj: Any) -> Any:
 
 def _suggest_candidate_params(trial: optuna.trial.Trial) -> dict[str, Any]:
     """
-    第一版先只优化 symbol.state 的关键阈值。
+    第一轮：
+    优先优化 symbol.state 中最影响 trend / range / risk 切换的关键阈值。
     """
     return {
+        # =========================
+        # Trend / Range / Risk 主分界
+        # =========================
         "symbol.state.trend_threshold": trial.suggest_float(
             "symbol.state.trend_threshold", 0.20, 0.40
         ),
         "symbol.state.strong_trend_threshold": trial.suggest_float(
-            "symbol.state.strong_trend_threshold", 0.45, 0.80
+            "symbol.state.strong_trend_threshold", 0.50, 0.80
         ),
-        "symbol.state.late_trend_exhaustion_threshold": trial.suggest_float(
-            "symbol.state.late_trend_exhaustion_threshold", 0.20, 0.50
+        "symbol.state.range_threshold": trial.suggest_float(
+            "symbol.state.range_threshold", 0.08, 0.25
         ),
-        "symbol.state.exhaustion_threshold": trial.suggest_float(
-            "symbol.state.exhaustion_threshold", 0.35, 0.75
+        "symbol.state.volatility_threshold": trial.suggest_float(
+            "symbol.state.volatility_threshold", 0.03, 0.08
         ),
         "symbol.state.rising_risk_threshold": trial.suggest_float(
-            "symbol.state.rising_risk_threshold", 0.15, 0.45
+            "symbol.state.rising_risk_threshold", 0.20, 0.50
+        ),
+
+        # =========================
+        # 趋势后期 / 失效 / 反转压力
+        # =========================
+        "symbol.state.late_trend_exhaustion_threshold": trial.suggest_float(
+            "symbol.state.late_trend_exhaustion_threshold", 0.25, 0.60
+        ),
+        "symbol.state.exhaustion_threshold": trial.suggest_float(
+            "symbol.state.exhaustion_threshold", 0.50, 0.85
         ),
         "symbol.state.failure_threshold": trial.suggest_float(
-            "symbol.state.failure_threshold", 0.30, 0.70
+            "symbol.state.failure_threshold", 0.25, 0.55
         ),
         "symbol.state.breakout_failure_threshold": trial.suggest_float(
-            "symbol.state.breakout_failure_threshold", 0.20, 0.60
+            "symbol.state.breakout_failure_threshold", 0.20, 0.50
         ),
         "symbol.state.reversal_pressure_threshold": trial.suggest_float(
-            "symbol.state.reversal_pressure_threshold", 0.10, 0.50
+            "symbol.state.reversal_pressure_threshold", 0.25, 0.60
         ),
         "symbol.state.strong_reversal_pressure_threshold": trial.suggest_float(
-            "symbol.state.strong_reversal_pressure_threshold", 0.25, 0.70
+            "symbol.state.strong_reversal_pressure_threshold", 0.35, 0.75
+        ),
+
+        # =========================
+        # Range 内部分层
+        # =========================
+        "symbol.state.accumulation_position_threshold": trial.suggest_float(
+            "symbol.state.accumulation_position_threshold", 0.15, 0.40
+        ),
+        "symbol.state.distribution_position_threshold": trial.suggest_float(
+            "symbol.state.distribution_position_threshold", 0.60, 0.85
+        ),
+        "symbol.state.range_slope_abs_threshold": trial.suggest_float(
+            "symbol.state.range_slope_abs_threshold", 0.20, 0.80
         ),
     }
-
 
 def _load_inputs(
     *,

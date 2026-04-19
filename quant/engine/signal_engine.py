@@ -442,14 +442,14 @@ def compute_action_signals(
     """
     _validate_required_columns(feature_df)
 
-    print("\n=== symbol_state value counts ===")
-    print(feature_df["symbol_state"].value_counts(dropna=False))
+    #print("\n=== symbol_state value counts ===")
+    #print(feature_df["symbol_state"].value_counts(dropna=False))
 
-    print("\n=== sector_state_sector value counts ===")
-    print(feature_df["sector_state_sector"].value_counts(dropna=False))
+    #print("\n=== sector_state_sector value counts ===")
+    #print(feature_df["sector_state_sector"].value_counts(dropna=False))
 
-    print("\n=== macro_state_macro value counts ===")
-    print(feature_df["macro_state_macro"].value_counts(dropna=False))
+    #print("\n=== macro_state_macro value counts ===")
+    #print(feature_df["macro_state_macro"].value_counts(dropna=False))
 
     signal_cfg = config.get("signal", config)
     default_action = _parse_action(signal_cfg.get("default_action", "hold"))
