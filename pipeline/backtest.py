@@ -8,8 +8,11 @@ import pandas as pd
 import yaml
 
 from quant.engine.feature_engine import build_feature_frame
-from quant.engine.signal_engine import compute_action_signals
-from quant.engine.position_engine import compute_position_engine_frame
+from quant.engine.signal_engine import compute_action_signals 
+from quant.engine.tracker import PositionTrackerEngine
+from quant.engine.decision_context import DecisionContextBuilder
+from quant.engine.position_engine import PositionEngine
+from quant.engine.decision_engine import DecisionEngine
 from utils.bar_utls import BarFrequency
 from utils.parquet_loader import (
     load_macro_bars,
@@ -141,7 +144,6 @@ def _build_default_output_path(symbol: str, start_date: str, end_date: str) -> P
     file_name = "results.csv"
     return EXPERIMENT_DIR / file_name
 
-
 def run_backtest_action_pipeline(
     *,
     symbol: str,
@@ -156,77 +158,47 @@ def run_backtest_action_pipeline(
     macro_freq: str = DEFAULT_MACRO_FREQ,
     strict: bool = True,
     out_path: str | Path | None = None,
-) -> pd.DataFrame:
-    logger.info("========== Start backtest action experiment ==========")
-    logger.info(
-        "Inputs | symbol=%s sector=%s start=%s end=%s symbol_freq=%s sector_freq=%s macro_freq=%s strict=%s",
-        symbol,
-        sector,
-        start_date,
-        end_date,
-        symbol_freq,
-        sector_freq,
-        macro_freq,
-        strict,
-    )
+) -> pd.DataFrame: 
+
+    TRADE_START_DATE = pd.Timestamp("2026-01-01", tz="UTC")
+
+    logger.info("========== Start NEW backtest ==========")
 
     config_bundle = _load_config_bundle(config_dir)
 
-    symbol_target_freq = _parse_bar_frequency(symbol_freq)
-    sector_target_freq = _parse_bar_frequency(sector_freq)
-    macro_target_freq = _parse_bar_frequency(macro_freq)
-
-    logger.info("Parsed frequencies successfully")
-
-    # =========================
-    # 1. Load Data
-    # =========================
-    logger.info("Loading symbol bars...")
     symbol_df = load_symbol_bars(
         base_path=base_path,
         symbol=symbol,
         start_date=start_date,
         end_date=end_date,
-        target_freq=symbol_target_freq,
+        target_freq=_parse_bar_frequency(symbol_freq),
         strict=False,
     )
-    _log_df("symbol_df", symbol_df)
 
-    logger.info("Loading sector bars...")
     sector_member_dfs = load_sector_bars(
         base_path=base_path,
         sector_name=sector,
         start_date=start_date,
         end_date=end_date,
-        target_freq=sector_target_freq,
+        target_freq=_parse_bar_frequency(sector_freq),
         strict=False,
     )
-    logger.info("sector_member_dfs loaded | symbols=%s", list(sector_member_dfs.keys()))
 
-    logger.info("Resolving sector ETF proxy...")
-    sector_etf_df = _resolve_sector_etf_df(sector_member_dfs, sector_etf=sector_etf)
-    _log_df("sector_etf_df", sector_etf_df)
+    sector_etf_df = _resolve_sector_etf_df(sector_member_dfs, sector_etf)
 
-    logger.info("Loading macro bars...")
     macro_data = load_macro_bars(
         base_path=base_path,
         start_date=start_date,
         end_date=end_date,
-        target_freq=macro_target_freq,
+        target_freq=_parse_bar_frequency(macro_freq),
         strict=False,
     )
-    logger.info("macro_data loaded | symbols=%s", list(macro_data.keys()))
 
-    logger.info("Resolving macro inputs...")
     spy_df, vix_df, hy_oas_df = _resolve_macro_inputs(macro_data)
-    _log_df("spy_df", spy_df)
-    _log_df("vix_df", vix_df)
-    _log_df("hy_oas_df", hy_oas_df)
 
     # =========================
-    # 2. Build Features
+    # Features
     # =========================
-    logger.info("Building feature frame...")
     feature_df = build_feature_frame(
         symbol_df=symbol_df,
         sector_etf_df=sector_etf_df,
@@ -236,54 +208,174 @@ def run_backtest_action_pipeline(
         hy_oas_df=hy_oas_df,
         config_bundle=config_bundle,
     )
-    _log_df("feature_df", feature_df)
 
     # =========================
-    # 3. Compute Action Signals
+    # Signals
     # =========================
-    logger.info("Computing action signals...")
-    action_signals = compute_action_signals(feature_df, config_bundle["signal"])
-    logger.info("Action signals computed | count=%s", len(action_signals))
+    signals = compute_action_signals(feature_df, config_bundle["signal"])
 
-    action_df = feature_df.copy()
-    action_df["action_signal"] = action_signals
-    # position engine 需要 close
-    if "close" not in action_df.columns:
-        logger.info("close not found in action_df, joining close from symbol_df...")
-        action_df = symbol_df[["close"]].join(action_df, how="left")
-    # =========================
-    # 4. Compute Position Actions
-    # =========================
-    logger.info("Computing position engine frame...")
-    position_df = compute_position_engine_frame(action_df)
-    _log_df("position_df", position_df)
+    df = feature_df.copy()
+    df["action_signal"] = signals
+
+    if "close" not in df.columns:
+        df = symbol_df[["close"]].join(df, how="left")
 
     # =========================
-    # 5. Merge All Outputs
+    # NEW ENGINE LOOP
     # =========================
-    logger.info("Merging action + position outputs into feature frame...")
-    final_df = action_df.join(position_df, how="left")
+    tracker = PositionTrackerEngine(symbol=symbol)
+    ctx_builder = DecisionContextBuilder()
+    position_engine = PositionEngine()
+    decision_engine = DecisionEngine()
 
-    logger.info("Joining original symbol bars back into final frame...")
-    final_df = symbol_df.join(final_df, how="left", rsuffix="_feature")
-    final_df = final_df.sort_index()
-    _log_df("final_df", final_df)
+    records = []
+
+    for ts, row in df.iterrows():
+        price = float(row["close"])
+
+        tracker.on_bar(ts, price)
+
+        snapshot = tracker.get_snapshot()
+
+        ctx = ctx_builder.build(
+            symbol=symbol,
+            timestamp=ts,
+            price=price,
+            alpha_signal=row["action_signal"],
+            symbol_state=row.get("symbol_state", "unknown"),
+            tracker_snapshot=snapshot,
+        )
+        if len(records) < 20:
+            print(
+                "DEBUG",
+                ts,
+                "raw_signal=", row["action_signal"],
+                "ctx_signal=", ctx.alpha_signal,
+                "raw_state=", row.get("symbol_state"),
+                "ctx_state=", ctx.symbol_state,
+            )
+        proposal = position_engine.propose(ctx)
+        decision = decision_engine.decide(ctx, proposal, base_qty=100)
+        if len(records) < 20:
+            print(
+                "DEBUG_DECISION",
+                "proposal=", proposal.action,
+                "decision=", decision.action,
+                "qty=", decision.qty,
+                "reason=", decision.reason,
+            )
+        executed = False
+
+        if ts >= TRADE_START_DATE:
+            if decision.action == "buy" and decision.qty > 0:
+                tracker.on_buy(ts, decision.qty, price)
+                executed = True
+
+            elif decision.action == "reduce" and decision.qty > 0:
+                tracker.on_reduce(ts, decision.qty, price)
+                executed = True
+
+            elif decision.action == "sell" and decision.qty > 0:
+                tracker.on_sell(ts, decision.qty, price)
+                executed = True
+
+            elif decision.action == "force_exit":
+                tracker.on_force_exit(ts, price)
+                executed = True
+
+        snap = tracker.get_snapshot()
+
+        records.append({
+            "datetime": ts,
+            "price": price,
+            "signal": row["action_signal"],
+            "proposal": proposal.action,
+            "proposal_reason": proposal.reason,
+            "decision": decision.action,
+            "decision_reason": decision.reason,
+            "qty": decision.qty,
+            "executed": executed,
+            "equity": snap.equity,
+            "pnl": snap.realized_pnl_total,
+            "drawdown": snap.current_drawdown,
+        })
+
+    result_df = pd.DataFrame(records).set_index("datetime")
+    # =========================
+    # DEBUG ANALYSIS（加这里）
+    # =========================
+    print("\n========== PROPOSAL COUNTS AFTER TRADE START ==========")
+    print(result_df[result_df.index >= TRADE_START_DATE]["proposal"].value_counts())
+
+    print("\n========== PROPOSAL REASON COUNTS AFTER TRADE START ==========")
+    print(result_df[result_df.index >= TRADE_START_DATE]["proposal_reason"].value_counts())
+    print("\n========== DECISION COUNTS AFTER TRADE START ==========")
+    print(result_df[result_df.index >= TRADE_START_DATE]["decision"].value_counts())
+
+    print("\n========== DECISION REASON COUNTS AFTER TRADE START ==========")
+    print(result_df[result_df.index >= TRADE_START_DATE]["decision_reason"].value_counts())
+
+    print("\n========== BUY DECISIONS AFTER TRADE START ==========")
+    buy_df = result_df[
+        (result_df.index >= TRADE_START_DATE) &
+        (result_df["decision"] == "buy")
+    ]
+
+    print(buy_df[[
+        "proposal",
+        "decision",
+        "qty",
+        "decision_reason",
+        "executed"
+    ]].head(30))
 
     # =========================
-    # 6. Export CSV
+    # 🔥 PRINT STATS（核心）
     # =========================
-    if out_path is None:
-        out_path = _build_default_output_path(symbol, start_date, end_date)
+    print("\n========== SIGNAL COUNTS ==========")
+    print(df["action_signal"].astype(str).value_counts())
 
-    logger.info("Exporting final dataframe to CSV: %s", out_path)
-    final_df = final_df.drop(columns=["action_signal"], errors="ignore")
-    export_dataframe_to_csv(final_df, out_path)
-    logger.info("CSV export completed")
+    trade_df = df[df.index >= TRADE_START_DATE].copy()
+    print("\n========== SIGNAL COUNTS AFTER TRADE START ==========")
+    print(trade_df["action_signal"].astype(str).value_counts())
 
-    logger.info("========== Backtest action experiment finished ==========")
-    return final_df
+    print("\n========== DECISION COUNTS ==========")
+    print(result_df["decision"].value_counts())
 
+    print("\n========== EXECUTED COUNTS ==========")
+    print(result_df[result_df["executed"] == True]["decision"].value_counts())
+    print("\n========== BACKTEST SUMMARY ==========")
 
+    trades = tracker.get_closed_trades()
+
+    if trades:
+        pnl_list = [t.pnl for t in trades]
+
+        total_pnl = sum(pnl_list)
+        win = [p for p in pnl_list if p > 0]
+        loss = [p for p in pnl_list if p < 0]
+
+        print(f"Total Trades: {len(pnl_list)}")
+        print(f"Total PnL:   {total_pnl:.2f}")
+        print(f"Win Rate:    {len(win)/len(pnl_list):.2%}")
+        print(f"Avg Win:     {sum(win)/len(win) if win else 0:.2f}")
+        print(f"Avg Loss:    {sum(loss)/len(loss) if loss else 0:.2f}")
+        print(f"Max Win:     {max(pnl_list):.2f}")
+        print(f"Max Loss:    {min(pnl_list):.2f}")
+
+    snap = tracker.get_snapshot()
+
+    print("\n========== DRAWDOWN ==========")
+    print(f"Final Equity: {snap.equity:.2f}")
+    print(f"Max DD:       {snap.max_drawdown:.2f}")
+
+    # =========================
+    # EXPORT
+    # =========================
+    if out_path:
+        export_dataframe_to_csv(result_df, out_path)
+
+    return result_df
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run offline backtest action pipeline")
 

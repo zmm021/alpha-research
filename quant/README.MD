@@ -243,3 +243,10 @@ state → signal → position
 ```
 
 这是一个**结构驱动的交易系统**，而不是预测系统。
+
+
+risk_engine   → risk_output
+tracker       → snapshot
+alpha_signal  → signal
+
+一起 → decision_context

@@ -1,0 +1,6 @@
+{
+  "symbol.state.failure_threshold": 0.32278013325903143,
+  "symbol.state.breakout_failure_threshold": 0.4211248733983131,
+  "symbol.state.reversal_pressure_threshold": 0.581909386114997,
+  "symbol.state.strong_reversal_pressure_threshold": 0.42646532400384896
+}

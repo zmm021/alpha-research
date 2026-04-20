@@ -10,7 +10,7 @@ from typing import Any
 import optuna
 import pandas as pd
 
-from pipeline.backtest import (
+from pipeline.backtest_signal import (
     DEFAULT_BASE_PATH,
     DEFAULT_CONFIG_DIR,
     DEFAULT_MACRO_FREQ,
@@ -81,35 +81,12 @@ def _suggest_candidate_params(trial: optuna.trial.Trial) -> dict[str, Any]:
     第一轮：
     优先优化 symbol.state 中最影响 trend / range / risk 切换的关键阈值。
     """
-    return {
-        # =========================
-        # Trend / Range / Risk 主分界
-        # =========================
-        "symbol.state.trend_threshold": trial.suggest_float(
-            "symbol.state.trend_threshold", 0.20, 0.40
-        ),
-        "symbol.state.strong_trend_threshold": trial.suggest_float(
-            "symbol.state.strong_trend_threshold", 0.50, 0.80
-        ),
-        "symbol.state.range_threshold": trial.suggest_float(
-            "symbol.state.range_threshold", 0.08, 0.25
-        ),
-        "symbol.state.volatility_threshold": trial.suggest_float(
-            "symbol.state.volatility_threshold", 0.03, 0.08
-        ),
-        "symbol.state.rising_risk_threshold": trial.suggest_float(
-            "symbol.state.rising_risk_threshold", 0.20, 0.50
-        ),
+    return { 
 
         # =========================
         # 趋势后期 / 失效 / 反转压力
         # =========================
-        "symbol.state.late_trend_exhaustion_threshold": trial.suggest_float(
-            "symbol.state.late_trend_exhaustion_threshold", 0.25, 0.60
-        ),
-        "symbol.state.exhaustion_threshold": trial.suggest_float(
-            "symbol.state.exhaustion_threshold", 0.50, 0.85
-        ),
+     
         "symbol.state.failure_threshold": trial.suggest_float(
             "symbol.state.failure_threshold", 0.25, 0.55
         ),
@@ -121,20 +98,7 @@ def _suggest_candidate_params(trial: optuna.trial.Trial) -> dict[str, Any]:
         ),
         "symbol.state.strong_reversal_pressure_threshold": trial.suggest_float(
             "symbol.state.strong_reversal_pressure_threshold", 0.35, 0.75
-        ),
-
-        # =========================
-        # Range 内部分层
-        # =========================
-        "symbol.state.accumulation_position_threshold": trial.suggest_float(
-            "symbol.state.accumulation_position_threshold", 0.15, 0.40
-        ),
-        "symbol.state.distribution_position_threshold": trial.suggest_float(
-            "symbol.state.distribution_position_threshold", 0.60, 0.85
-        ),
-        "symbol.state.range_slope_abs_threshold": trial.suggest_float(
-            "symbol.state.range_slope_abs_threshold", 0.20, 0.80
-        ),
+        ), 
     }
 
 def _load_inputs(

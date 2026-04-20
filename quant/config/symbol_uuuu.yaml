@@ -37,9 +37,9 @@ state:
   exhaustion_threshold: 0.443127
   late_trend_exhaustion_threshold: 0.26440756881155398
 
-  failure_threshold: 0.52335
+  failure_threshold: 0.62335
   rising_risk_threshold: 0.200711
-  breakout_failure_threshold: 0.208062333
+  breakout_failure_threshold: 0.298062333
 
   breakout_intent_threshold: 0.02
   confirmed_breakout_intent_threshold: 0.05
@@ -47,7 +47,7 @@ state:
   pullback_position_threshold: 0.02
   accumulation_position_threshold: 0.35
   distribution_position_threshold: 0.65
-  reversal_pressure_threshold: 0.303575
+  reversal_pressure_threshold: 0.353575
   strong_reversal_pressure_threshold: 0.665257600787259
   range_buy_position_threshold: 0.30
   range_sell_position_threshold: 0.70

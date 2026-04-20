@@ -100,4 +100,7 @@ python3 -m pipeline.optimization \
   --n-trials 20 \
   --study-name uuuu_signal_opt
   ```
-
+## 🚀  5. Realtime simulation
+```bash
+python3 -m pipeline.realtime_simulation
+```
