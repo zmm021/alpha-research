@@ -29,5 +29,5 @@ def compute_trend_indicators(
     out[Indicators.MA20] = ma20
     out[Indicators.MA50] = ma50
     out[Indicators.MA20_SLOPE] = ma20.diff()
-
+    out[Indicators.MA50_SLOPE] = ma50.diff()
     return out

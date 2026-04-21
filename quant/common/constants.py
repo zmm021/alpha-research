@@ -34,6 +34,7 @@ class Indicators:
     MA20 = "ma20"
     MA50 = "ma50"
     MA20_SLOPE = "ma20_slope"
+    MA50_SLOPE = "ma50_slope"
 
     ATR_PCT = "atr_pct"
 

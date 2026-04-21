@@ -5,6 +5,7 @@ from datetime import timedelta
 import pandas as pd
 
 from quant.common.enums import ActionSignal
+from quant.engine.regime_engine import compute_regime, MarketRegime
 
 
 # =========================
@@ -72,38 +73,6 @@ def _safe_float(value, default: float = 0.5) -> float:
         return float(value)
     except Exception:
         return default
-
-
-# =========================
-# State Family Helpers
-# =========================
-def _is_trend_state(symbol_state: str) -> bool:
-    return symbol_state in {
-        "trend_early",
-        "trend_continuation",
-        "trend_late",
-        "trend_exhaustion",
-        "pullback",
-        "breakout_setup",
-        "breakout",
-        "breakout_failed",
-    }
-
-
-def _is_range_state(symbol_state: str) -> bool:
-    return symbol_state in {
-        "range_accumulation",
-        "range_neutral",
-        "range_distribution",
-    }
-
-
-def _is_risk_state(symbol_state: str) -> bool:
-    return symbol_state in {
-        "risk_rising",
-        "risk_high",
-        "breakdown_risk",
-    }
 
 
 # =========================
@@ -233,7 +202,6 @@ def _range_signal(
         return ActionSignal.BUY if allow_range_buy else ActionSignal.HOLD
 
     if score <= sell_th:
-        # 顶部极端弱化时，distribution 可以更激进
         if symbol_state == "range_distribution":
             range_distribution_action = _parse_action(
                 signal_cfg.get("range_distribution_action", "sell")
@@ -293,6 +261,13 @@ def _apply_global_overrides(
     macro_risk_off = enable_risk_filter and macro_state == "risk_off"
     sector_weak = enable_sector_filter and sector_state == "weak"
 
+    # 使用统一 regime
+    regime = compute_regime(
+        symbol_state=symbol_state,
+        sector_state=sector_state,
+        macro_state=macro_state,
+    )
+
     # 1. 双差环境
     if macro_risk_off and sector_weak:
         if symbol_state in {"risk_high", "breakdown_risk", "breakout_failed"}:
@@ -332,10 +307,10 @@ def _apply_global_overrides(
         if symbol_state == "risk_rising":
             return ActionSignal.REDUCE
 
-        if _is_range_state(symbol_state) and current_signal == ActionSignal.BUY:
+        if regime == MarketRegime.RANGE and current_signal == ActionSignal.BUY:
             return ActionSignal.HOLD
 
-        if _is_trend_state(symbol_state) and current_signal == ActionSignal.BUY:
+        if regime == MarketRegime.TREND and current_signal == ActionSignal.BUY:
             return ActionSignal.HOLD
 
         return current_signal
@@ -352,7 +327,7 @@ def _apply_global_overrides(
                 else ActionSignal.REDUCE
             )
 
-        if current_signal == ActionSignal.BUY and _is_range_state(symbol_state):
+        if current_signal == ActionSignal.BUY and regime == MarketRegime.RANGE:
             return ActionSignal.HOLD
 
         if current_signal == ActionSignal.BUY and symbol_state in {
@@ -442,15 +417,6 @@ def compute_action_signals(
     """
     _validate_required_columns(feature_df)
 
-    #print("\n=== symbol_state value counts ===")
-    #print(feature_df["symbol_state"].value_counts(dropna=False))
-
-    #print("\n=== sector_state_sector value counts ===")
-    #print(feature_df["sector_state_sector"].value_counts(dropna=False))
-
-    #print("\n=== macro_state_macro value counts ===")
-    #print(feature_df["macro_state_macro"].value_counts(dropna=False))
-
     signal_cfg = config.get("signal", config)
     default_action = _parse_action(signal_cfg.get("default_action", "hold"))
 
@@ -476,8 +442,14 @@ def compute_action_signals(
         symbol_state = _normalize_state_value(symbol_state_series.iloc[i])
         range_position = _safe_float(range_position_series.iloc[i], default=0.5)
 
+        regime = compute_regime(
+            symbol_state=symbol_state,
+            sector_state=sector_state,
+            macro_state=macro_state,
+        )
+
         # 1. raw regime-aware signal
-        if _is_trend_state(symbol_state):
+        if regime == MarketRegime.TREND:
             signal = _trend_signal(
                 symbol_state=symbol_state,
                 sector_state=sector_state,
@@ -486,7 +458,7 @@ def compute_action_signals(
                 default_action=default_action,
             )
 
-        elif _is_range_state(symbol_state):
+        elif regime == MarketRegime.RANGE:
             signal = _range_signal(
                 symbol_state=symbol_state,
                 sector_state=sector_state,
@@ -496,7 +468,7 @@ def compute_action_signals(
                 default_action=default_action,
             )
 
-        elif _is_risk_state(symbol_state):
+        elif regime == MarketRegime.RISK:
             signal = _risk_signal(
                 symbol_state=symbol_state,
                 sector_state=sector_state,

@@ -67,7 +67,8 @@ class PositionTracker:
         self.equity_peak: float = self.equity
         self.current_drawdown: float = 0.0
         self.max_drawdown: float = 0.0
-
+        self.last_executed_action: str | None = None
+        self.last_executed_action_time = None
         self._recent_pnls: deque[float] = deque(maxlen=self.config.recent_window)
         self._recent_reduce_pnls: deque[float] = deque(maxlen=self.config.recent_reduce_window)
         self._recent_sell_pnls: deque[float] = deque(maxlen=self.config.recent_sell_window)
@@ -118,6 +119,8 @@ class PositionTracker:
         self.current_time = timestamp
         self.current_price = price
         self._refresh_account_state()
+        self.last_executed_action = "buy"
+        self.last_executed_action_time = timestamp  
         return lot
 
     def on_reduce(
@@ -128,6 +131,8 @@ class PositionTracker:
         exit_reason: str = "reduce",
         exit_regime: str = "",
     ) -> list[ClosedTrade]:
+        self.last_executed_action = "reduce"
+        self.last_executed_action_time = timestamp
         return self._close_fifo(
             timestamp=timestamp,
             qty=qty,
@@ -145,6 +150,8 @@ class PositionTracker:
         exit_reason: str = "sell",
         exit_regime: str = "",
     ) -> list[ClosedTrade]:
+        self.last_executed_action = "sell"
+        self.last_executed_action_time = timestamp
         return self._close_fifo(
             timestamp=timestamp,
             qty=qty,
@@ -162,6 +169,8 @@ class PositionTracker:
         exit_regime: str = "",
     ) -> list[ClosedTrade]:
         qty = self.current_position_qty
+        self.last_executed_action = "sell"
+        self.last_executed_action_time = timestamp  
         if qty <= 0:
             return []
         return self._close_fifo(
@@ -232,6 +241,8 @@ class PositionTracker:
             recent_trade_stats=self.get_recent_trade_stats(),
             recent_reduce_stats=self.get_recent_reduce_stats(),
             recent_sell_stats=self.get_recent_sell_stats(),
+            last_executed_action=self.last_executed_action,
+            last_executed_action_time=self.last_executed_action_time,
         )
 
     def reset(self) -> None:

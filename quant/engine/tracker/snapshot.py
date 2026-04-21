@@ -36,3 +36,6 @@ class TrackerSnapshot:
     recent_trade_stats: TradeStats
     recent_reduce_stats: TradeStats
     recent_sell_stats: TradeStats
+
+    last_executed_action: str | None
+    last_executed_action_time: object | None

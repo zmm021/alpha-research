@@ -160,7 +160,7 @@ def run_backtest_action_pipeline(
     out_path: str | Path | None = None,
 ) -> pd.DataFrame: 
 
-    TRADE_START_DATE = pd.Timestamp("2026-01-01", tz="UTC")
+    TRADE_START_DATE = pd.Timestamp("2025-09-01", tz="UTC")
 
     logger.info("========== Start NEW backtest ==========")
 
@@ -236,34 +236,23 @@ def run_backtest_action_pipeline(
         tracker.on_bar(ts, price)
 
         snapshot = tracker.get_snapshot()
-
         ctx = ctx_builder.build(
             symbol=symbol,
             timestamp=ts,
             price=price,
             alpha_signal=row["action_signal"],
             symbol_state=row.get("symbol_state", "unknown"),
+            sector_state=row.get("sector_state_sector", ""),
+            macro_state=row.get("macro_state_macro", ""),
+            range_position=row.get("symbol_range_position"),
+            trend_slope=row.get("symbol_trend_slope_raw"),
+            long_slope=row.get("symbol_long_slope_raw"),
             tracker_snapshot=snapshot,
         )
-        if len(records) < 20:
-            print(
-                "DEBUG",
-                ts,
-                "raw_signal=", row["action_signal"],
-                "ctx_signal=", ctx.alpha_signal,
-                "raw_state=", row.get("symbol_state"),
-                "ctx_state=", ctx.symbol_state,
-            )
+ 
         proposal = position_engine.propose(ctx)
         decision = decision_engine.decide(ctx, proposal, base_qty=100)
-        if len(records) < 20:
-            print(
-                "DEBUG_DECISION",
-                "proposal=", proposal.action,
-                "decision=", decision.action,
-                "qty=", decision.qty,
-                "reason=", decision.reason,
-            )
+ 
         executed = False
 
         if ts >= TRADE_START_DATE:
@@ -301,34 +290,11 @@ def run_backtest_action_pipeline(
         })
 
     result_df = pd.DataFrame(records).set_index("datetime")
-    # =========================
-    # DEBUG ANALYSIS（加这里）
-    # =========================
-    print("\n========== PROPOSAL COUNTS AFTER TRADE START ==========")
-    print(result_df[result_df.index >= TRADE_START_DATE]["proposal"].value_counts())
-
-    print("\n========== PROPOSAL REASON COUNTS AFTER TRADE START ==========")
-    print(result_df[result_df.index >= TRADE_START_DATE]["proposal_reason"].value_counts())
-    print("\n========== DECISION COUNTS AFTER TRADE START ==========")
-    print(result_df[result_df.index >= TRADE_START_DATE]["decision"].value_counts())
-
-    print("\n========== DECISION REASON COUNTS AFTER TRADE START ==========")
-    print(result_df[result_df.index >= TRADE_START_DATE]["decision_reason"].value_counts())
-
-    print("\n========== BUY DECISIONS AFTER TRADE START ==========")
+     
     buy_df = result_df[
         (result_df.index >= TRADE_START_DATE) &
         (result_df["decision"] == "buy")
     ]
-
-    print(buy_df[[
-        "proposal",
-        "decision",
-        "qty",
-        "decision_reason",
-        "executed"
-    ]].head(30))
-
     # =========================
     # 🔥 PRINT STATS（核心）
     # =========================
