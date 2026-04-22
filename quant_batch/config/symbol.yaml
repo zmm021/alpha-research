@@ -1,0 +1,56 @@
+indicators:
+  ma_short_window: 10
+  ma_long_window: 20
+  atr_window: 20
+  volume_window: 10
+  high_window: 15
+  range_position_window: 20
+factors:
+  trend_scale: 1.0
+  volatility_scale: 1.0
+  liquidity_scale: 1.0
+  position_scale: 1.0
+  intraday_scale: 1.0
+
+  trend_cross_weight: 0.7
+  trend_slope_weight: 0.3
+
+  intraday_gap_weight: 0.5
+  intraday_vwap_weight: 0.5
+
+contexts:
+  exhaustion_position_weight: 0.5
+  exhaustion_intraday_weight: 0.5
+
+  failure_vol_weight: 0.6
+  failure_intraday_weight: 0.4
+
+state:
+  trend_threshold: 0.3146481118623043
+  strong_trend_threshold: 0.5748545150280734
+  weak_trend_threshold: 0.20
+
+  range_threshold: 0.15
+  volatility_threshold: 0.05
+  risk_vol_threshold: 0.08
+
+  exhaustion_threshold: 0.443127
+  late_trend_exhaustion_threshold: 0.26440756881155398
+
+  failure_threshold: 0.52335
+  rising_risk_threshold: 0.200711
+  breakout_failure_threshold: 0.208062333
+
+  breakout_intent_threshold: 0.02
+  confirmed_breakout_intent_threshold: 0.05
+
+  pullback_position_threshold: 0.02
+  accumulation_position_threshold: 0.35
+  distribution_position_threshold: 0.65
+  reversal_pressure_threshold: 0.303575
+  strong_reversal_pressure_threshold: 0.665257600787259
+  range_buy_position_threshold: 0.30
+  range_sell_position_threshold: 0.70
+  breakout_range_position_threshold: 0.85
+  breakout_setup_range_position_threshold: 0.75
+  range_slope_abs_threshold: 0.50

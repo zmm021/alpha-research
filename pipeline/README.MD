@@ -53,7 +53,53 @@ python3 -m pipeline.ingestion_backfill backfill-month --macro --month 2025-01
 ```bash
 python3 -m pipeline.backtest --symbol UUUU --sector rare_earth  --sector-etf REMX --start-date 2025-01-01 --end-date 2025-12-31
 ```
+run_backtest_action_pipeline
+├─ _load_config_bundle
+├─ load_symbol_bars
+├─ load_sector_bars
+├─ _resolve_sector_etf_df
+├─ load_macro_bars
+├─ _resolve_macro_inputs
+├─ build_feature_frame
+├─ compute_action_signals
+├─ PositionTrackerEngine(...)
+├─ DecisionContextBuilder(...)
+├─ PositionEngine(...)
+├─ DecisionEngine(...)
+└─ for each bar:
+   ├─ tracker.on_bar
+   ├─ tracker.get_snapshot
+   ├─ ctx_builder.build
+   ├─ position_engine.propose
+   ├─ decision_engine.decide
+   ├─ tracker.on_buy / on_reduce / on_sell / on_force_exit
+   └─ tracker.get_snapshot
 
+build_feature_frame
+├─ compute_symbol_indicators
+├─ compute_symbol_factors
+├─ compute_symbol_contexts
+├─ compute_symbol_states
+├─ compute_sector_indicators
+├─ compute_sector_factors
+├─ compute_sector_contexts
+├─ compute_sector_states
+├─ compute_macro_indicators
+├─ compute_macro_factors
+├─ compute_macro_contexts
+└─ compute_macro_states
+
+signals = compute_action_signals(feature_df, config_bundle["signal"])
+compute_action_signals
+├─ _validate_required_columns
+├─ compute_regime
+├─ _trend_signal
+├─ _range_signal
+├─ _risk_signal
+├─ _apply_global_overrides
+├─ _apply_cooldown
+└─ _collapse_repeated_signal
+signal_engine 直接依赖 regime_engine.compute_regime。所以当前不是只有 decision_context 在用 regime，signal_engine 自己也会算一遍 regime。
 
 ## 🚀  4. optimization 贝叶斯信号参数优
 

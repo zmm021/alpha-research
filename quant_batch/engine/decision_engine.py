@@ -157,7 +157,7 @@ class DecisionEngine:
         # =====================================================
         # 5️⃣ drawdown 控制（你当前调优重点）
         # =====================================================
-        if ctx.current_drawdown < -1500 and action == "buy":
+        if ctx.current_drawdown < -300 and action == "buy":
 
             remaining_capacity = max_position_qty - current_position
 
