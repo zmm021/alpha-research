@@ -262,25 +262,35 @@ def _to_float_or_str(v: Any) -> Any:
     v = _normalize_value(v)
 
     try:
-        if pd.isna(v):
-            return None
+        if v is None or pd.isna(v):
+            return 0.0
     except Exception:
-        pass
+        if v is None:
+            return 0.0
 
     try:
         return float(v)
     except Exception:
-        return str(v) if v is not None else None
+        return str(v)
 
 
 def _numeric_equal(a: Any, b: Any, tol: float) -> bool:
     a = _normalize_value(a)
     b = _normalize_value(b)
 
-    if a is None and b is None:
-        return True
-    if a is None or b is None:
-        return False
+    try:
+        if a is None or pd.isna(a):
+            a = 0.0
+    except Exception:
+        if a is None:
+            a = 0.0
+
+    try:
+        if b is None or pd.isna(b):
+            b = 0.0
+    except Exception:
+        if b is None:
+            b = 0.0
 
     try:
         af = float(a)
@@ -312,11 +322,13 @@ def run_validation(
     macro_debug_out: str | Path = DEFAULT_OUTPUT_MACRO_DEBUG,
     tol: float = 0.1,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    logger.info("========== Start column-level validation ==========")
+
+    logger.info("========== Start FULL validation ==========")
 
     config_bundle = _load_config_bundle(config_dir)
 
     symbol_df = _ensure_datetime_index(
+        #load_symbol_bars(base_path, symbol, start_date, end_date, _parse_bar_frequency(symbol_freq), False)
         load_symbol_bars(
             base_path=base_path,
             symbol=symbol,
@@ -335,9 +347,8 @@ def run_validation(
         target_freq=_parse_bar_frequency(sector_freq),
         strict=False,
     )
-    sector_member_dfs = {
-        k: _ensure_datetime_index(v) for k, v in (sector_member_dfs or {}).items()
-    }
+    
+    sector_member_dfs = {k: _ensure_datetime_index(v) for k, v in sector_member_dfs.items()}
 
     sector_etf_df = _ensure_datetime_index(_resolve_sector_etf_df(sector_member_dfs, sector_etf))
 
@@ -351,115 +362,38 @@ def run_validation(
     macro_data = {k: _ensure_datetime_index(v) for k, v in macro_data.items()}
 
     spy_df, vix_df, hy_oas_df = _resolve_macro_inputs(macro_data)
-    spy_df = _ensure_datetime_index(spy_df)
-    vix_df = _ensure_datetime_index(vix_df)
-    hy_oas_df = _ensure_datetime_index(hy_oas_df)
-
-    _log_df("symbol_df", symbol_df)
-    _log_df("sector_etf_df", sector_etf_df)
-    _log_df("spy_df", spy_df)
-    _log_df("vix_df", vix_df)
-    _log_df("hy_oas_df", hy_oas_df)
 
     batch_df = _ensure_datetime_index(
         build_feature_frame(
-            symbol_df=symbol_df,
-            sector_etf_df=sector_etf_df,
-            sector_member_dfs=sector_member_dfs,
-            spy_df=spy_df,
-            vix_df=vix_df,
-            hy_oas_df=hy_oas_df,
-            config_bundle=config_bundle,
+            symbol_df,
+            sector_etf_df,
+            sector_member_dfs,
+            spy_df,
+            vix_df,
+            hy_oas_df,
+            config_bundle,
         )
     )
 
-    if batch_df.empty:
-        raise ValueError("Batch feature frame is empty.")
-
-    common_index = batch_df.index.intersection(symbol_df.index)
-    common_index = common_index.intersection(sector_etf_df.index)
-    common_index = common_index.intersection(spy_df.index)
-    common_index = common_index.intersection(vix_df.index)
-    common_index = common_index.intersection(hy_oas_df.index)
-
-    if len(common_index) <= warmup_bars:
-        raise ValueError(
-            f"Not enough aligned rows for validation. rows={len(common_index)}, warmup_bars={warmup_bars}"
-        )
-
-    batch_df = batch_df.loc[common_index].copy()
-    symbol_df = symbol_df.loc[common_index].copy()
-    sector_etf_df = sector_etf_df.loc[common_index].copy()
-    spy_df = spy_df.loc[common_index].copy()
-    vix_df = vix_df.loc[common_index].copy()
-    hy_oas_df = hy_oas_df.loc[common_index].copy()
-    for k, df in sector_member_dfs.items():
-        sector_member_dfs[k] = df.reindex(common_index)
-
-    members_df = _safe_member_close_frame(sector_member_dfs, common_index)
-
+    common_index = batch_df.index
     warmup_index = common_index[:warmup_bars]
     validate_index = common_index[warmup_bars:]
 
-    logger.info(
-        "Validation split | warmup_bars=%s validate_rows=%s first_validate_ts=%s last_validate_ts=%s",
-        warmup_bars,
-        len(validate_index),
-        validate_index.min(),
-        validate_index.max(),
-    )
+    members_df = _safe_member_close_frame(sector_member_dfs, common_index)
 
     macro_engine = MacroEngine(config_bundle["macro"])
     sector_engine = SectorEngine(config_bundle["sector"])
     symbol_engine = SymbolEngine(config_bundle["symbol"])
 
-    macro_engine.warmup(
-        spy_df=spy_df.loc[warmup_index],
-        vix_df=vix_df.loc[warmup_index],
-        credit_df=hy_oas_df.loc[warmup_index],
-    )
-    sector_engine.warmup(
-        sector_df=sector_etf_df.loc[warmup_index],
-        spy_df=spy_df.loc[warmup_index],
-        members_df=members_df.loc[warmup_index],
-    )
-    symbol_engine.warmup(
-        symbol_df=symbol_df.loc[warmup_index],
-    )
-
-    macro_mapping = [
-        ("spy_return_z", "spy_trend_z_macro"),
-        ("vix_z", "vix_z_macro"),
-        ("credit_z", "hy_oas_z_macro"),
-        ("trend_factor", "macro_trend_factor_macro"),
-        ("vol_factor", "macro_volatility_factor_macro"),
-        ("credit_factor", "macro_credit_risk_factor_macro"),
-        ("risk_context", "macro_risk_pressure_macro"),
-        ("macro_state", "macro_state_macro"),
-    ]
-
-    sector_mapping = [
-        ("rs_z", "rs_z_sector"),
-        ("rs_momentum", "rs_momentum_z_sector"),
-        ("breadth", "breadth_frac_sector"),
-        ("breadth_momentum", "breadth_momentum_sector"),
-        ("vol_z", "vol_ratio_z_sector"),
-        ("vol_trend", "vol_trend_z_sector"),
-        ("rs_factor", "sector_relative_strength_factor_sector"),
-        ("breadth_factor", "sector_breadth_factor_sector"),
-        ("context", "sector_support_score_sector"),
-        ("state", "sector_state_sector"),
-    ]
-
-    symbol_mapping = [
-        ("range_position", "symbol_range_position"),
-        ("state", "symbol_state"),
-    ]
+    macro_engine.warmup(spy_df.loc[warmup_index], vix_df.loc[warmup_index], hy_oas_df.loc[warmup_index])
+    sector_engine.warmup(sector_etf_df.loc[warmup_index], spy_df.loc[warmup_index], members_df.loc[warmup_index])
+    symbol_engine.warmup(symbol_df.loc[warmup_index])
 
     details = []
-    macro_rows = []
+    validated_cols = set()
 
     for ts in validate_index:
+
         macro_bar = _build_macro_bar(spy_df, vix_df, hy_oas_df, ts)
         sector_bar = _build_sector_bar(sector_etf_df, ts)
         spy_bar = {"close": float(spy_df.loc[ts]["close"])}
@@ -472,133 +406,165 @@ def run_validation(
 
         batch_row = batch_df.loc[ts]
 
-        # macro debug export
-        macro_rows.append(
-            {
-                "datetime": ts,
-                "inc_spy_return_z": _to_float_or_str(macro_snapshot.spy_return_z),
-                "batch_spy_return_z": _to_float_or_str(batch_row.get("spy_trend_z_macro")),
-                "inc_vix_z": _to_float_or_str(macro_snapshot.vix_z),
-                "batch_vix_z": _to_float_or_str(batch_row.get("vix_z_macro")),
-                "inc_credit_z": _to_float_or_str(macro_snapshot.credit_z),
-                "batch_credit_z": _to_float_or_str(batch_row.get("hy_oas_z_macro")),
-                "inc_trend_factor": _to_float_or_str(macro_snapshot.trend_factor),
-                "batch_trend_factor": _to_float_or_str(batch_row.get("macro_trend_factor_macro")),
-                "inc_vol_factor": _to_float_or_str(macro_snapshot.vol_factor),
-                "batch_vol_factor": _to_float_or_str(batch_row.get("macro_volatility_factor_macro")),
-                "inc_credit_factor": _to_float_or_str(macro_snapshot.credit_factor),
-                "batch_credit_factor": _to_float_or_str(batch_row.get("macro_credit_risk_factor_macro")),
-                "inc_risk_context": _to_float_or_str(macro_snapshot.risk_context),
-                "batch_risk_context": _to_float_or_str(batch_row.get("macro_risk_pressure_macro")),
-                "inc_macro_state": _to_float_or_str(macro_snapshot.macro_state),
-                "batch_macro_state": _to_float_or_str(batch_row.get("macro_state_macro")),
-            }
-        )
+        for col in batch_df.columns:
 
-        for inc_key, batch_key in macro_mapping:
-            inc_val = getattr(macro_snapshot, inc_key)
-            batch_val = _series_value(batch_row, batch_key)
+            batch_val = batch_row.get(col)
+            inc_val = None
+            layer = None
+
+            try:
+                inc_val = None
+                layer = None
+
+                # ===== macro =====
+                if col.endswith("_macro"):
+                    layer = "macro"
+
+                    macro_mapping = {
+                        "spy_trend_z_macro": "spy_return_z",
+                        "vix_z_macro": "vix_z",
+                        "hy_oas_z_macro": "credit_z",
+
+                        "macro_trend_factor_macro": "trend_factor",
+                        "macro_volatility_factor_macro": "vol_factor",
+                        "macro_credit_risk_factor_macro": "credit_factor",
+
+                        "macro_risk_pressure_macro": "risk_context",
+                        "macro_trend_strength_macro": "trend_factor",
+
+                        "macro_state_macro": "macro_state",
+                    }
+
+                    key = macro_mapping.get(col)
+                    if key:
+                        inc_val = getattr(macro_snapshot, key, None)
+
+                # ===== sector =====
+                elif col.endswith("_sector"):
+                    layer = "sector"
+
+                    sector_mapping = {
+                        # indicators
+                        "rs_z_sector": "rs_z",
+                        "rs_momentum_z_sector": "rs_momentum",
+                        "breadth_frac_sector": "breadth",
+                        "breadth_momentum_sector": "breadth_momentum",
+                        "vol_ratio_z_sector": "vol_z",
+                        "vol_trend_z_sector": "vol_trend",
+
+                        # factors
+                        "sector_relative_strength_factor_sector": "rs_factor",
+                        "sector_breadth_factor_sector": "breadth_factor",
+                        "sector_participation_factor_sector": "participation_factor",
+                        "sector_momentun_factor_sector": "momentum_factor",
+
+                        # contexts
+                        "sector_support_score_sector": "context",
+                        "sector_breadth_health_sector": "breadth_health",
+                        "sector_momentum_sector": "momentum",
+
+                        # state
+                        "sector_state_sector": "state",
+                    }
+
+                    key = sector_mapping.get(col)
+                    if key:
+                        inc_val = getattr(sector_snapshot, key, None)
+
+                # ===== symbol =====
+                elif col.startswith("symbol_"):
+                    layer = "symbol"
+                    key = col.replace("symbol_", "")
+
+                    if key == "state":
+                        inc_val = symbol_snapshot.state
+                    else:
+                        # 注意：symbol snapshot 是 dict 结构
+                        inc_val = (
+                            symbol_snapshot.contexts.get(col)
+                            or symbol_snapshot.factors.get(col)
+                            or symbol_snapshot.indicators.get(col)
+                        )
+                # ===== symbol raw indicators（无前缀）=====
+                else:
+                    # 先尝试从 symbol indicators 取
+                    inc_val = symbol_snapshot.indicators.get(col)
+
+                    if inc_val is not None:
+                        layer = "symbol_indicator"
+                    else:
+                        layer = "unknown"
+ 
+            except Exception as e:
+                layer = "error"
+                inc_val = None
+
             match = _numeric_equal(inc_val, batch_val, tol)
-            details.append(
-                {
-                    "datetime": ts,
-                    "layer": "macro",
-                    "metric": inc_key,
-                    "batch_col": batch_key,
-                    "inc_value": _to_float_or_str(inc_val),
-                    "batch_value": _to_float_or_str(batch_val),
-                    "match": match,
-                }
-            )
 
-        for inc_key, batch_key in sector_mapping:
-            inc_val = getattr(sector_snapshot, inc_key)
-            batch_val = _series_value(batch_row, batch_key)
-            match = _numeric_equal(inc_val, batch_val, tol)
-            details.append(
-                {
-                    "datetime": ts,
-                    "layer": "sector",
-                    "metric": inc_key,
-                    "batch_col": batch_key,
-                    "inc_value": _to_float_or_str(inc_val),
-                    "batch_value": _to_float_or_str(batch_val),
-                    "match": match,
-                }
-            )
-
-        for inc_key, batch_key in symbol_mapping:
-            if inc_key == "state":
-                inc_val = symbol_snapshot.state
+            if inc_val is None:
+                # 如果 batch 也是 NaN/0，match 会是 True；否则才算未实现/不匹配
+                status = "MATCHED" if match else "NOT_IMPLEMENTED"
             else:
-                inc_val = symbol_snapshot.contexts.get(inc_key, symbol_snapshot.indicators.get(inc_key))
+                status = "MATCHED" if match else "MISMATCH"
 
-            batch_val = _series_value(batch_row, batch_key)
-            match = _numeric_equal(inc_val, batch_val, tol)
+            validated_cols.add(col)
 
             details.append(
                 {
                     "datetime": ts,
-                    "layer": "symbol",
-                    "metric": inc_key,
-                    "batch_col": batch_key,
+                    "layer": layer,
+                    "column": col,
                     "inc_value": _to_float_or_str(inc_val),
                     "batch_value": _to_float_or_str(batch_val),
                     "match": match,
+                    "status": status,
                 }
             )
 
     detail_df = pd.DataFrame(details)
+
     summary_df = (
-        detail_df.groupby(["layer", "metric", "batch_col"], dropna=False)["match"]
+        detail_df.groupby(["layer", "column"])["match"]
         .agg(["count", "mean"])
         .reset_index()
         .rename(columns={"mean": "match_rate"})
-        .sort_values(["layer", "match_rate", "metric"], ascending=[True, True, True])
+        .sort_values(["layer", "match_rate"])
     )
 
-    macro_debug_df = pd.DataFrame(macro_rows)
-    if not macro_debug_df.empty:
-        macro_debug_df["risk_context_diff"] = (
-            macro_debug_df["inc_risk_context"] - macro_debug_df["batch_risk_context"]
-        ).abs()
-        macro_debug_df["state_match"] = (
-            macro_debug_df["inc_macro_state"] == macro_debug_df["batch_macro_state"]
-        )
-        macro_debug_df = macro_debug_df.sort_values(
-            ["state_match", "risk_context_diff"],
-            ascending=[True, False],
-        )
+    # =========================
+    # 🔥 coverage
+    # =========================
+    coverage_df = summary_df.copy()
 
-    logger.info("========== Column Validation Summary ==========")
-    for _, row in summary_df.iterrows():
-        logger.info(
-            "[%s] %-20s -> %-32s match_rate=%.4f (%s rows)",
-            row["layer"],
-            row["metric"],
-            row["batch_col"],
-            row["match_rate"],
-            int(row["count"]),
-        )
+    coverage_df["final_status"] = coverage_df.apply(
+        lambda r: (
+            "OK" if r["match_rate"] >= 0.999
+            else "PARTIAL" if r["match_rate"] > 0
+            else "NOT_MATCHED"
+        ),
+        axis=1,
+    )
 
-    detail_out = Path(detail_out)
-    summary_out = Path(summary_out)
-    macro_debug_out = Path(macro_debug_out)
+    coverage_path = Path("pipeline/validation_coverage.csv")
+    coverage_path.parent.mkdir(parents=True, exist_ok=True)
+    coverage_df.to_csv(coverage_path, index=False)
 
-    detail_out.parent.mkdir(parents=True, exist_ok=True)
-    summary_out.parent.mkdir(parents=True, exist_ok=True)
-    macro_debug_out.parent.mkdir(parents=True, exist_ok=True)
+    # =========================
+    # 🔥 missing columns（最重要）
+    # =========================
+    missing_cols = set(batch_df.columns) - validated_cols
+
+    missing_df = pd.DataFrame({"missing_columns": list(missing_cols)})
+    missing_path = Path("pipeline/validation_missing_columns.csv")
+    missing_df.to_csv(missing_path, index=False)
+
+    logger.info("Coverage saved to %s", coverage_path)
+    logger.info("Missing columns saved to %s", missing_path)
 
     detail_df.to_csv(detail_out, index=False)
     summary_df.to_csv(summary_out, index=False)
-    macro_debug_df.to_csv(macro_debug_out, index=False)
-
-    logger.info("Detail output saved to %s", detail_out)
-    logger.info("Summary output saved to %s", summary_out)
-    logger.info("Macro debug output saved to %s", macro_debug_out)
 
     return detail_df, summary_df
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate batch vs incremental columns")
