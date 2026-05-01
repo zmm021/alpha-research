@@ -6,15 +6,16 @@ from typing import Dict, Any, Optional
 import pandas as pd
 
 from quant.symbol.indicator.indicator_state import SymbolIndicatorState
-from quant.symbol.factors import compute_symbol_factors, compute_symbol_contexts
-from quant.symbol.state import compute_symbol_states
+from quant.symbol.factors import compute_symbol_factors, compute_symbol_structure
+from quant.symbol.state import compute_symbol_state_output
+from quant.common.schemas import StructureOutput
 
 
 @dataclass
 class SymbolSnapshot:
     indicators: Dict[str, Any]
     factors: Dict[str, Any]
-    contexts: Dict[str, Any]
+    structure_scores: Dict[str, Any]
     state: str
 
 
@@ -29,32 +30,38 @@ class SymbolEngine:
         self.prev_state = None
 
     def update(self, bar: Dict[str, Any]) -> SymbolSnapshot:
+        # ===== indicators =====
         indicators = self.indicator_state.update(bar)
         indicator_df = pd.DataFrame([indicators])
 
+        # ===== factors =====
         factor_df = compute_symbol_factors(
             indicator_df=indicator_df,
             config=self.config,
         )
-        context_df = compute_symbol_contexts(
+
+        # ===== structure scores =====
+        structure_df = compute_symbol_structure(
             factor_df=factor_df,
             config=self.config,
         )
 
         factor_row = factor_df.iloc[0].to_dict()
-        context_row = context_df.iloc[0].to_dict()
+        structure_row = structure_df.iloc[0].to_dict()
 
-        state_series = compute_symbol_states(
-            context_df=context_df,
+        # ===== state =====
+        structure_output = StructureOutput(values=structure_row)
+
+        state = compute_symbol_state_output(
+            structure_output=structure_output,
             config=self.config,
         )
-        state = state_series.iloc[0]
 
         self.prev_state = state
 
         return SymbolSnapshot(
             indicators=indicators,
             factors=factor_row,
-            contexts=context_row,
+            structure_scores=structure_row,
             state=state,
         )

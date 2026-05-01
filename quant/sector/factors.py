@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from quant.common.constants import Indicators, Factors, Contexts
+from quant.common.constants import Indicators, Factors, StructureScores
 from quant.common.types import ConfigDict
 
 
@@ -37,7 +37,7 @@ def compute_sector_factors(ind_df: pd.DataFrame, config: ConfigDict) -> pd.DataF
     return out
 
 
-def compute_sector_contexts(fac_df: pd.DataFrame, config: ConfigDict) -> pd.DataFrame:
+def compute_sector_structure(fac_df: pd.DataFrame, config: ConfigDict) -> pd.DataFrame:
 
     cfg = config["contexts"]
 
@@ -49,14 +49,14 @@ def compute_sector_contexts(fac_df: pd.DataFrame, config: ConfigDict) -> pd.Data
     momentum = fac_df[Factors.SECTOR_MOMENTUM_FACTOR]
 
     # 主结构评分
-    out[Contexts.SECTOR_SUPPORT_SCORE] = (
+    out[StructureScores.SECTOR_SUPPORT_SCORE] = (
         cfg["rs_weight"] * rs +
         cfg["breadth_weight"] * breadth +
         cfg["vol_weight"] * vol
     )
 
     # 保留单独维度（避免信息压缩）
-    out[Contexts.SECTOR_BREADTH_HEALTH] = breadth
-    out[Contexts.SECTOR_MOMENTUM] = momentum
+    out[StructureScores.SECTOR_BREADTH_HEALTH] = breadth
+    out[StructureScores.SECTOR_MOMENTUM] = momentum
 
     return out

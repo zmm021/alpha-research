@@ -9,7 +9,7 @@ factors:
   vol_scale: 1.0
   credit_scale: 1.0
 
-contexts:
+structure:
   vol_weight: 0.6
   credit_weight: 0.4
 

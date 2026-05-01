@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from quant.common.constants import Contexts
+from quant.common.constants import StructureScores
 from quant.common.enums import MacroState
 from quant.common.types import ConfigDict
 
@@ -31,8 +31,8 @@ def compute_macro_states(
 
     return context_df.apply(
         lambda r: _single_state(
-            float(r[Contexts.MACRO_TREND_STRENGTH]),
-            float(r[Contexts.MACRO_RISK_PRESSURE]),
+            float(r[StructureScores.MACRO_TREND_STRENGTH]),
+            float(r[StructureScores.MACRO_RISK_PRESSURE]),
             cfg,
         ),
         axis=1,

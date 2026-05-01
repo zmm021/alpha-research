@@ -3,15 +3,15 @@ from __future__ import annotations
 import pandas as pd
 
 from quant.symbol.indicators import compute_symbol_indicators
-from quant.symbol.factors import compute_symbol_factors, compute_symbol_contexts
+from quant.symbol.factors import compute_symbol_factors, compute_symbol_structure
 from quant.symbol.state import compute_symbol_states
 
 from quant.sector.indicators import compute_sector_indicators
-from quant.sector.factors import compute_sector_factors, compute_sector_contexts
+from quant.sector.factors import compute_sector_factors, compute_sector_structure
 from quant.sector.state import compute_sector_states
 
 from quant.macro.indicators import compute_macro_indicators
-from quant.macro.factors import compute_macro_factors, compute_macro_contexts
+from quant.macro.factors import compute_macro_factors, compute_macro_structure
 from quant.macro.state import compute_macro_states
 
 
@@ -158,7 +158,7 @@ def build_feature_frame(
     symbol_ind = compute_symbol_indicators(symbol_df, symbol_config)
  
     symbol_fac = compute_symbol_factors(symbol_ind, symbol_config)
-    symbol_ctx = compute_symbol_contexts(symbol_fac, symbol_config)
+    symbol_ctx = compute_symbol_structure(symbol_fac, symbol_config)
     symbol_state = compute_symbol_states(symbol_ctx, symbol_config)
 
     symbol_full = symbol_ind.join(symbol_fac).join(symbol_ctx)
@@ -175,7 +175,7 @@ def build_feature_frame(
         config=sector_config,
     )
     sector_fac = compute_sector_factors(sector_ind, sector_config)
-    sector_ctx = compute_sector_contexts(sector_fac, sector_config)
+    sector_ctx = compute_sector_structure(sector_fac, sector_config)
     sector_state = compute_sector_states(sector_ctx, sector_config)
 
     sector_full = sector_ind.join(sector_fac).join(sector_ctx)
@@ -191,7 +191,7 @@ def build_feature_frame(
         config=macro_config,
     )
     macro_fac = compute_macro_factors(macro_ind, macro_config)
-    macro_ctx = compute_macro_contexts(macro_fac, macro_config)
+    macro_ctx = compute_macro_structure(macro_fac, macro_config)
     macro_state = compute_macro_states(macro_ctx, macro_config)
 
     macro_full = macro_ind.join(macro_fac).join(macro_ctx)

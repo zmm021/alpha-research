@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from quant.common.constants import Contexts, Factors
+from quant.common.constants import StructureScores, Factors
 from quant.symbol.factor.common import require_factor_columns
 
 
-def compute_symbol_context_frame(
+def compute_symbol_structure_frame(
     factor_df: pd.DataFrame,
     context_cfg: dict,
 ) -> pd.DataFrame:
@@ -37,25 +37,25 @@ def compute_symbol_context_frame(
     range_position_factor = factor_df[Factors.SYMBOL_RANGE_POSITION_FACTOR]
     intraday_factor = factor_df[Factors.SYMBOL_INTRADAY_INTENT_FACTOR]
 
-    out[Contexts.SYMBOL_TREND_STRENGTH] = trend_factor
-    out[Contexts.SYMBOL_TREND_SLOPE] = trend_slope_factor
-    out[Contexts.SYMBOL_VOLATILITY_STATE] = volatility_factor
-    out[Contexts.SYMBOL_POSITION_QUALITY] = position_factor
-    out[Contexts.SYMBOL_RANGE_POSITION] = range_position_factor
-    out[Contexts.SYMBOL_INTRADAY_INTENT] = intraday_factor
-    out[Contexts.SYMBOL_LIQUIDITY_QUALITY] = liquidity_factor
+    out[StructureScores.SYMBOL_TREND_STRENGTH] = trend_factor
+    out[StructureScores.SYMBOL_TREND_SLOPE] = trend_slope_factor
+    out[StructureScores.SYMBOL_VOLATILITY_STATE] = volatility_factor
+    out[StructureScores.SYMBOL_POSITION_QUALITY] = position_factor
+    out[StructureScores.SYMBOL_RANGE_POSITION] = range_position_factor
+    out[StructureScores.SYMBOL_INTRADAY_INTENT] = intraday_factor
+    out[StructureScores.SYMBOL_LIQUIDITY_QUALITY] = liquidity_factor
 
-    out[Contexts.SYMBOL_EXHAUSTION_RISK] = (
+    out[StructureScores.SYMBOL_EXHAUSTION_RISK] = (
         exhaustion_position_weight * position_factor.clip(lower=0.0)
         + exhaustion_intraday_weight * intraday_factor.clip(lower=0.0)
     )
 
-    out[Contexts.SYMBOL_FAILURE_RISK] = (
+    out[StructureScores.SYMBOL_FAILURE_RISK] = (
         failure_vol_weight * volatility_factor.clip(lower=0.0)
         + failure_intraday_weight * (-intraday_factor).clip(lower=0.0)
     )
 
-    out[Contexts.SYMBOL_REVERSAL_PRESSURE] = (
+    out[StructureScores.SYMBOL_REVERSAL_PRESSURE] = (
         (-trend_slope_factor).clip(lower=0.0)
         + (-intraday_factor).clip(lower=0.0)
     ) / 2.0

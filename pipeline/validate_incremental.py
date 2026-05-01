@@ -481,7 +481,7 @@ def run_validation(
                     else:
                         # 注意：symbol snapshot 是 dict 结构
                         inc_val = (
-                            symbol_snapshot.contexts.get(col)
+                            symbol_snapshot.structure_scores.get(col)
                             or symbol_snapshot.factors.get(col)
                             or symbol_snapshot.indicators.get(col)
                         )

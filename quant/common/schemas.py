@@ -38,7 +38,7 @@ class FactorOutput:
 
 
 @dataclass(slots=True)
-class ContextOutput:
+class StructureOutput:
     values: dict[str, float] = field(default_factory=dict)
 
     def get(self, name: str, default: float | None = None) -> float | None:
@@ -46,7 +46,7 @@ class ContextOutput:
 
     def require(self, name: str) -> float:
         if name not in self.values:
-            raise KeyError(f"Missing context: {name}")
+            raise KeyError(f"Missing structure score: {name}")
         return self.values[name]
 
 
@@ -65,7 +65,7 @@ class LayerSnapshot:
 
     indicators: IndicatorOutput = field(default_factory=IndicatorOutput)
     factors: FactorOutput = field(default_factory=FactorOutput)
-    contexts: ContextOutput = field(default_factory=ContextOutput)
+    profiles: StructureOutput = field(default_factory=StructureOutput)
     states: StateOutput = field(default_factory=StateOutput)
 
     metadata: dict[str, Any] = field(default_factory=dict)

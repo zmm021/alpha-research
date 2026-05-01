@@ -5,8 +5,11 @@ from typing import Optional, Dict, Any
 
 import pandas as pd
 
+from quant.common.constants import StructureScores
 from quant.common.enums import SectorState
 from quant.common.math import RollingMean, RollingZScore
+from quant.common.schemas import StructureOutput
+from quant.sector.state import compute_sector_state_output
 
 
 @dataclass
@@ -25,8 +28,11 @@ class SectorSnapshot:
     participation_factor: float
     momentum_factor: float
 
-    # contexts
-    context: float              # support_score
+    # structure scores
+    structure_scores: Dict[str, Any]
+
+    # convenient aliases
+    support_score: float
     breadth_health: float
     momentum: float
 
@@ -35,32 +41,6 @@ class SectorSnapshot:
 
 
 class SectorEngine:
-    """
-    Incremental sector engine aligned with batch pipeline:
-
-    indicators:
-      - rs_z_sector
-      - rs_momentum_z_sector
-      - breadth_frac_sector
-      - breadth_momentum_sector
-      - vol_ratio_z_sector
-      - vol_trend_z_sector
-
-    factors:
-      - sector_relative_strength_factor_sector
-      - sector_breadth_factor_sector
-      - sector_participation_factor_sector
-      - sector_momentun_factor_sector
-
-    contexts:
-      - sector_support_score_sector
-      - sector_breadth_health_sector
-      - sector_momentum_sector
-
-    state:
-      - sector_state_sector
-    """
-
     def __init__(self, config: dict):
         self.config = config
 
@@ -77,7 +57,6 @@ class SectorEngine:
         self.vol_z_window = int(ind_cfg["vol_z_window"])
         self.vol_trend_window = int(ind_cfg["vol_trend_window"])
 
-        # rolling states
         self.sector_close_ma_for_return = RollingMean(self.rs_window)
         self.spy_close_ma_for_return = RollingMean(self.rs_window)
 
@@ -88,29 +67,20 @@ class SectorEngine:
         self.vol_ratio_z_state = RollingZScore(self.vol_z_window)
         self.vol_ratio_diff_z_state = RollingZScore(self.vol_z_window)
 
-        # breadth members state: each member needs its own rolling MA
         self.member_ma_states: Dict[str, RollingMean] = {}
 
-        # breadth aggregate series
-        self.breadth_momentum_base = RollingMean(1)  # keep for compatibility
+        self.breadth_momentum_base = RollingMean(1)
         self._breadth_history: list[float] = []
 
-        # histories for N-step diff indicators
         self._rs_raw_history: list[float] = []
         self._vol_ratio_history: list[float] = []
 
-        # previous raw values
         self.prev_sector_close: Optional[float] = None
         self.prev_spy_close: Optional[float] = None
         self.prev_rs_raw: Optional[float] = None
         self.prev_vol_ratio: Optional[float] = None
 
-        # state
         self.prev_state: Optional[SectorState] = None
-
-    # =====================================================
-    # Warmup
-    # =====================================================
 
     def warmup(
         self,
@@ -127,19 +97,14 @@ class SectorEngine:
         sector_volume = sector_df["volume"]
         spy_close = spy_df["close"].reindex(sector_df.index)
 
-        # -------------------------
-        # warm up rs / vol chains
-        # -------------------------
         for ts in sector_df.index:
             s_close = float(sector_close.loc[ts])
             s_vol = float(sector_volume.loc[ts])
             p_close = float(spy_close.loc[ts])
 
-            # rolling means (kept for consistency / future compatibility)
             _ = self.sector_close_ma_for_return.update(s_close)
             _ = self.spy_close_ma_for_return.update(p_close)
 
-            # volume ratio + N-step diff zscore
             vol_ratio_base = self.sector_volume_ma.update(s_vol)
             vol_ratio = (s_vol / vol_ratio_base) if vol_ratio_base not in (0, None) else 0.0
             _ = self.vol_ratio_z_state.update(vol_ratio)
@@ -155,7 +120,6 @@ class SectorEngine:
 
             _ = self.vol_ratio_diff_z_state.update(vol_ratio_diff)
 
-            # rs raw + N-step diff zscore
             if self.prev_sector_close is None or self.prev_spy_close is None:
                 sector_ret = 0.0
                 spy_ret_ = 0.0
@@ -188,9 +152,6 @@ class SectorEngine:
             self.prev_rs_raw = rs_raw
             self.prev_vol_ratio = vol_ratio
 
-        # -------------------------
-        # breadth warmup
-        # -------------------------
         if members_df is None:
             members_df = pd.DataFrame(index=sector_df.index)
 
@@ -211,8 +172,6 @@ class SectorEngine:
                 ma_state = self.member_ma_states[symbol]
                 member_ma = ma_state.update(close_val)
 
-                # match batch behavior:
-                # only emit usable flag once enough window is available
                 ready = len(ma_state.buffer) >= self.breadth_ma_window
                 if not ready:
                     continue
@@ -228,10 +187,6 @@ class SectorEngine:
 
         self.prev_state = SectorState.MIXED
 
-    # =====================================================
-    # Update
-    # =====================================================
-
     def update(
         self,
         sector_bar: Dict[str, Any],
@@ -239,16 +194,12 @@ class SectorEngine:
         members_bar: Dict[str, Dict[str, float | None]],
     ) -> SectorSnapshot:
         fcfg = self.config["factors"]
-        ccfg = self.config["contexts"]
-        scfg = self.config["state"]
+        scfg = self.config["structure"]
 
         sector_close = float(sector_bar["close"])
         sector_volume = float(sector_bar.get("volume", 0.0))
         spy_close = float(spy_bar["close"])
 
-        # -------------------------
-        # 1. RS indicators
-        # -------------------------
         if self.prev_sector_close is None or self.prev_spy_close is None:
             sector_ret = 0.0
             spy_ret_ = 0.0
@@ -276,9 +227,6 @@ class SectorEngine:
 
         rs_momentum = self.rs_diff_z_state.update(rs_diff)
 
-        # -------------------------
-        # 2. Breadth indicators
-        # -------------------------
         flags = []
 
         for symbol, bar in members_bar.items():
@@ -296,8 +244,7 @@ class SectorEngine:
             if not ready:
                 continue
 
-            flag = 1.0 if float(close_val) > member_ma else 0.0
-            flags.append(flag)
+            flags.append(1.0 if float(close_val) > member_ma else 0.0)
 
         breadth = sum(flags) / len(flags) if flags else 0.0
 
@@ -310,9 +257,6 @@ class SectorEngine:
         else:
             breadth_momentum = breadth - self._breadth_history[-(self.breadth_momentum_window + 1)]
 
-        # -------------------------
-        # 3. Volume / participation indicators
-        # -------------------------
         vol_base = self.sector_volume_ma.update(sector_volume)
         vol_ratio = (sector_volume / vol_base) if vol_base not in (0, None) else 0.0
         vol_z = self.vol_ratio_z_state.update(vol_ratio)
@@ -328,9 +272,6 @@ class SectorEngine:
 
         vol_trend = self.vol_ratio_diff_z_state.update(vol_ratio_diff)
 
-        # -------------------------
-        # 4. Factors (batch-equivalent)
-        # -------------------------
         rs_factor = float(fcfg["rs_scale"]) * rs_z
         breadth_factor = float(fcfg["breadth_scale"]) * breadth
         participation_factor = float(fcfg["vol_scale"]) * vol_z
@@ -341,36 +282,28 @@ class SectorEngine:
             + float(fcfg["vol_trend_scale"]) * vol_trend
         )
 
-        # -------------------------
-        # 5. Contexts (batch-equivalent)
-        # -------------------------
-        context = (
-            float(ccfg["rs_weight"]) * rs_factor
-            + float(ccfg["breadth_weight"]) * breadth_factor
-            + float(ccfg["vol_weight"]) * participation_factor
+        support_score = (
+            float(scfg["rs_weight"]) * rs_factor
+            + float(scfg["breadth_weight"]) * breadth_factor
+            + float(scfg["vol_weight"]) * participation_factor
         )
 
         breadth_health = breadth_factor
         momentum = momentum_factor
 
-        # -------------------------
-        # 6. State (batch-equivalent)
-        # -------------------------
-        leading_threshold = float(scfg.get("leading_threshold", 0.5))
-        weak_threshold = float(scfg.get("weak_threshold", -0.2))
-        breadth_strong_threshold = float(scfg.get("breadth_strong_threshold", 0.55))
-        breadth_weak_threshold = float(scfg.get("breadth_weak_threshold", 0.45))
+        structure_scores = {
+            StructureScores.SECTOR_SUPPORT_SCORE: support_score,
+            StructureScores.SECTOR_BREADTH_HEALTH: breadth_health,
+            StructureScores.SECTOR_MOMENTUM: momentum,
+        }
 
-        if context >= leading_threshold and breadth_health >= breadth_strong_threshold:
-            state = SectorState.LEADING
-        elif context <= weak_threshold or breadth_health <= breadth_weak_threshold:
-            state = SectorState.WEAK
-        else:
-            state = SectorState.MIXED
+        structure_output = StructureOutput(values=structure_scores)
 
-        # -------------------------
-        # save prev
-        # -------------------------
+        state = compute_sector_state_output(
+            structure_output=structure_output,
+            config=self.config,
+        )
+
         self.prev_sector_close = sector_close
         self.prev_spy_close = spy_close
         self.prev_rs_raw = rs_raw
@@ -388,7 +321,8 @@ class SectorEngine:
             breadth_factor=breadth_factor,
             participation_factor=participation_factor,
             momentum_factor=momentum_factor,
-            context=context,
+            structure_scores=structure_scores,
+            support_score=support_score,
             breadth_health=breadth_health,
             momentum=momentum,
             state=state,

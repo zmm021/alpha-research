@@ -3,11 +3,11 @@ from __future__ import annotations
 import pandas as pd
 
 from quant.common.constants import Indicators
-from quant.common.schemas import ContextOutput, FactorOutput
+from quant.common.schemas import StructureOutput, FactorOutput
 from quant.common.types import ConfigDict
 
 from quant.symbol.factor.common import require_indicator_columns
-from quant.symbol.factor.contexts import compute_symbol_context_frame
+from quant.symbol.factor.structure import compute_symbol_structure_frame
 from quant.symbol.factor.intraday import compute_intraday_factors
 from quant.symbol.factor.liquidity import compute_liquidity_factors
 from quant.symbol.factor.position import compute_position_factors
@@ -53,11 +53,11 @@ def compute_symbol_factors(
     return out
 
 
-def compute_symbol_contexts(
+def compute_symbol_structure(
     factor_df: pd.DataFrame,
     config: ConfigDict,
 ) -> pd.DataFrame:
-    return compute_symbol_context_frame(factor_df, config["contexts"])
+    return compute_symbol_structure_frame(factor_df, config["structure"])
 
 
 def compute_symbol_factor_output(
@@ -69,11 +69,11 @@ def compute_symbol_factor_output(
     return FactorOutput(values={k: float(v) for k, v in latest.items()})
 
 
-def compute_symbol_context_output(
+def compute_symbol_structure_output(
     indicator_df: pd.DataFrame,
     config: ConfigDict,
-) -> ContextOutput:
+) -> StructureOutput:
     factor_df = compute_symbol_factors(indicator_df, config)
-    context_df = compute_symbol_contexts(factor_df, config)
-    latest = context_df.iloc[-1].dropna().to_dict()
-    return ContextOutput(values={k: float(v) for k, v in latest.items()})
+    structure_df = compute_symbol_structure(factor_df, config)
+    latest = structure_df.iloc[-1].dropna().to_dict()
+    return StructureOutput(values={k: float(v) for k, v in latest.items()})

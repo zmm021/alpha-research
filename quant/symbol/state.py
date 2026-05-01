@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from quant.common.constants import Contexts
+from quant.common.constants import StructureScores
 from quant.common.enums import SymbolState
-from quant.common.schemas import ContextOutput
+from quant.common.schemas import StructureOutput
 from quant.common.types import ConfigDict
 
 
@@ -219,35 +219,35 @@ def _compute_single_symbol_state(
 
 
 def compute_symbol_states(
-    context_df: pd.DataFrame,
+    structure_df: pd.DataFrame,
     config: ConfigDict,
 ) -> pd.Series:
     required_cols = [
-        Contexts.SYMBOL_TREND_STRENGTH,
-        Contexts.SYMBOL_TREND_SLOPE,
-        Contexts.SYMBOL_VOLATILITY_STATE,
-        Contexts.SYMBOL_POSITION_QUALITY,
-        Contexts.SYMBOL_RANGE_POSITION,
-        Contexts.SYMBOL_INTRADAY_INTENT,
-        Contexts.SYMBOL_EXHAUSTION_RISK,
-        Contexts.SYMBOL_FAILURE_RISK,
-        Contexts.SYMBOL_REVERSAL_PRESSURE,
+        StructureScores.SYMBOL_TREND_STRENGTH,
+        StructureScores.SYMBOL_TREND_SLOPE,
+        StructureScores.SYMBOL_VOLATILITY_STATE,
+        StructureScores.SYMBOL_POSITION_QUALITY,
+        StructureScores.SYMBOL_RANGE_POSITION,
+        StructureScores.SYMBOL_INTRADAY_INTENT,
+        StructureScores.SYMBOL_EXHAUSTION_RISK,
+        StructureScores.SYMBOL_FAILURE_RISK,
+        StructureScores.SYMBOL_REVERSAL_PRESSURE,
     ]
-    missing = [c for c in required_cols if c not in context_df.columns]
+    missing = [c for c in required_cols if c not in structure_df.columns]
     if missing:
         raise ValueError(f"Missing required context columns for symbol state: {missing}")
 
-    return context_df.apply(
+    return structure_df.apply(
         lambda row: _compute_single_symbol_state(
-            trend_strength=float(row[Contexts.SYMBOL_TREND_STRENGTH]),
-            trend_slope=float(row[Contexts.SYMBOL_TREND_SLOPE]),
-            volatility_state=float(row[Contexts.SYMBOL_VOLATILITY_STATE]),
-            position_quality=float(row[Contexts.SYMBOL_POSITION_QUALITY]),
-            range_position=float(row[Contexts.SYMBOL_RANGE_POSITION]),
-            intraday_intent=float(row[Contexts.SYMBOL_INTRADAY_INTENT]),
-            exhaustion_risk=float(row[Contexts.SYMBOL_EXHAUSTION_RISK]),
-            failure_risk=float(row[Contexts.SYMBOL_FAILURE_RISK]),
-            reversal_pressure=float(row[Contexts.SYMBOL_REVERSAL_PRESSURE]),
+            trend_strength=float(row[StructureScores.SYMBOL_TREND_STRENGTH]),
+            trend_slope=float(row[StructureScores.SYMBOL_TREND_SLOPE]),
+            volatility_state=float(row[StructureScores.SYMBOL_VOLATILITY_STATE]),
+            position_quality=float(row[StructureScores.SYMBOL_POSITION_QUALITY]),
+            range_position=float(row[StructureScores.SYMBOL_RANGE_POSITION]),
+            intraday_intent=float(row[StructureScores.SYMBOL_INTRADAY_INTENT]),
+            exhaustion_risk=float(row[StructureScores.SYMBOL_EXHAUSTION_RISK]),
+            failure_risk=float(row[StructureScores.SYMBOL_FAILURE_RISK]),
+            reversal_pressure=float(row[StructureScores.SYMBOL_REVERSAL_PRESSURE]),
             config=config,
         ),
         axis=1,
@@ -255,20 +255,20 @@ def compute_symbol_states(
 
 
 def compute_symbol_state_output(
-    context_output: ContextOutput,
+    structure_output: StructureOutput,
     config: ConfigDict,
 ) -> SymbolState:
-    values = context_output.values
+    values = structure_output.values
 
     return _compute_single_symbol_state(
-        trend_strength=float(values.get(Contexts.SYMBOL_TREND_STRENGTH, 0.0)),
-        trend_slope=float(values.get(Contexts.SYMBOL_TREND_SLOPE, 0.0)),
-        volatility_state=float(values.get(Contexts.SYMBOL_VOLATILITY_STATE, 0.0)),
-        position_quality=float(values.get(Contexts.SYMBOL_POSITION_QUALITY, 0.0)),
-        range_position=float(values.get(Contexts.SYMBOL_RANGE_POSITION, 0.5)),
-        intraday_intent=float(values.get(Contexts.SYMBOL_INTRADAY_INTENT, 0.0)),
-        exhaustion_risk=float(values.get(Contexts.SYMBOL_EXHAUSTION_RISK, 0.0)),
-        failure_risk=float(values.get(Contexts.SYMBOL_FAILURE_RISK, 0.0)),
-        reversal_pressure=float(values.get(Contexts.SYMBOL_REVERSAL_PRESSURE, 0.0)),
+        trend_strength=float(values.get(StructureScores.SYMBOL_TREND_STRENGTH, 0.0)),
+        trend_slope=float(values.get(StructureScores.SYMBOL_TREND_SLOPE, 0.0)),
+        volatility_state=float(values.get(StructureScores.SYMBOL_VOLATILITY_STATE, 0.0)),
+        position_quality=float(values.get(StructureScores.SYMBOL_POSITION_QUALITY, 0.0)),
+        range_position=float(values.get(StructureScores.SYMBOL_RANGE_POSITION, 0.5)),
+        intraday_intent=float(values.get(StructureScores.SYMBOL_INTRADAY_INTENT, 0.0)),
+        exhaustion_risk=float(values.get(StructureScores.SYMBOL_EXHAUSTION_RISK, 0.0)),
+        failure_risk=float(values.get(StructureScores.SYMBOL_FAILURE_RISK, 0.0)),
+        reversal_pressure=float(values.get(StructureScores.SYMBOL_REVERSAL_PRESSURE, 0.0)),
         config=config,
     )

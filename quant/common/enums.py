@@ -67,3 +67,22 @@ class MarketRegime(str, Enum):
     RANGE = "range"
     RISK = "risk"
     MIXED = "mixed"
+
+
+
+class MarketRegime(Enum):
+
+    TREND = "trend"
+
+    RANGE = "range"
+
+    RISK = "risk"
+
+    NEUTRAL = "neutral"
+
+class RegimeQuality(Enum):
+    STRONG = "strong"
+    NORMAL = "normal"
+    WEAK = "weak"
+    BAD = "bad"
+    UNCERTAIN = "uncertain"

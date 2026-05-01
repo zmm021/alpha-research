@@ -69,7 +69,7 @@ class Factors:
     SYMBOL_INTRADAY_INTENT_FACTOR = "symbol_intraday_intent_factor"
     SYMBOL_RANGE_POSITION_FACTOR = "symbol_range_position_factor"
 
-class Contexts:
+class StructureScores:
     # ===== Macro contexts =====
     MACRO_TREND_STRENGTH = "macro_trend_strength"
     MACRO_RISK_PRESSURE = "macro_risk_pressure"

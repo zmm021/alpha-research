@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from quant.common.constants import Indicators, Factors, Contexts
+from quant.common.constants import Indicators, Factors, StructureScores
 from quant.common.types import ConfigDict
 
 
@@ -27,7 +27,7 @@ def compute_macro_factors(indicator_df: pd.DataFrame, config: ConfigDict) -> pd.
     return out
 
 
-def compute_macro_contexts(factor_df: pd.DataFrame, config: ConfigDict) -> pd.DataFrame:
+def compute_macro_structure(factor_df: pd.DataFrame, config: ConfigDict) -> pd.DataFrame:
 
     cfg = config["contexts"]
 
@@ -37,9 +37,9 @@ def compute_macro_contexts(factor_df: pd.DataFrame, config: ConfigDict) -> pd.Da
     vol = factor_df[Factors.MACRO_VOLATILITY_FACTOR]
     credit = factor_df[Factors.MACRO_CREDIT_RISK_FACTOR]
 
-    out[Contexts.MACRO_TREND_STRENGTH] = trend
+    out[StructureScores.MACRO_TREND_STRENGTH] = trend
 
-    out[Contexts.MACRO_RISK_PRESSURE] = (
+    out[StructureScores.MACRO_RISK_PRESSURE] = (
         cfg["vol_weight"] * vol.clip(lower=0) +
         cfg["credit_weight"] * credit.clip(lower=0)
     )

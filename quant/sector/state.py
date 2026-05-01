@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from quant.common.constants import Contexts
+from quant.common.constants import StructureScores
 from quant.common.enums import SectorState
-from quant.common.schemas import ContextOutput
+from quant.common.schemas import StructureOutput
 from quant.common.types import ConfigDict
 
 
@@ -42,20 +42,20 @@ def compute_sector_states(
     config: ConfigDict,
 ) -> pd.Series:
     """
-    Compute sector state series from sector contexts.
+    Compute sector state series from sector StructureScrores.
     """
     required_cols = [
-        Contexts.SECTOR_SUPPORT_SCORE,
-        Contexts.SECTOR_BREADTH_HEALTH,
+        StructureScores.SECTOR_SUPPORT_SCORE,
+        StructureScores.SECTOR_BREADTH_HEALTH,
     ]
     missing = [c for c in required_cols if c not in context_df.columns]
     if missing:
-        raise ValueError(f"Missing required context columns for sector state: {missing}")
+        raise ValueError(f"Missing required structure score columns for sector state: {missing}")
 
     return context_df.apply(
         lambda row: _compute_single_sector_state(
-            support_score=float(row[Contexts.SECTOR_SUPPORT_SCORE]),
-            breadth_health=float(row[Contexts.SECTOR_BREADTH_HEALTH]),
+            support_score=float(row[StructureScores.SECTOR_SUPPORT_SCORE]),
+            breadth_health=float(row[StructureScores.SECTOR_BREADTH_HEALTH]),
             config=config,
         ),
         axis=1,
@@ -63,16 +63,16 @@ def compute_sector_states(
 
 
 def compute_sector_state_output(
-    context_output: ContextOutput,
+    structure_output: StructureOutput,
     config: ConfigDict,
 ) -> SectorState:
     """
     Convenience helper for latest-row / snapshot use cases.
     """
-    values = context_output.values
+    values = structure_output.values
 
     return _compute_single_sector_state(
-        support_score=float(values.get(Contexts.SECTOR_SUPPORT_SCORE, 0.0)),
-        breadth_health=float(values.get(Contexts.SECTOR_BREADTH_HEALTH, 0.0)),
+        support_score=float(values.get(StructureScores.SECTOR_SUPPORT_SCORE, 0.0)),
+        breadth_health=float(values.get(StructureScores.SECTOR_BREADTH_HEALTH, 0.0)),
         config=config,
     )

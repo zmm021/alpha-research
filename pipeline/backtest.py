@@ -160,7 +160,7 @@ def run_backtest_action_pipeline(
     out_path: str | Path | None = None,
 ) -> pd.DataFrame: 
 
-    TRADE_START_DATE = pd.Timestamp("2025-05-01", tz="UTC")
+    TRADE_START_DATE = pd.Timestamp("2025-07-01", tz="UTC")
 
     logger.info("========== Start NEW backtest ==========")
 
