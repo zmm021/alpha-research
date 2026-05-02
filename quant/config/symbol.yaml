@@ -5,6 +5,11 @@ indicators:
   volume_window: 10
   high_window: 15
   range_position_window: 20
+  range_position_window_mid: 1000
+  high_window_short: 50 
+  range_position_window_short: 50 
+  high_window_mid: 200 
+  
 factors:
   trend_scale: 1.0
   volatility_scale: 1.0

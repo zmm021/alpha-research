@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from quant.common.enums import MarketRegime, RegimeQuality
 
@@ -15,15 +15,29 @@ class S2RegimeContext:
 
     依赖：
         S1StructureContext
+
+    职责：
+        1. 压缩 S1 结构信息为 market regime
+        2. 输出交易 gating
+        3. 保留解释信息，方便 debug / 回测分析
     """
 
     # ===== core regime =====
-    regime: MarketRegime | None = None
-    regime_quality: RegimeQuality | None = None
+    regime: MarketRegime = MarketRegime.MIXED
+    regime_quality: RegimeQuality = RegimeQuality.UNCERTAIN
     regime_score: float = 0.0
 
-    # ===== gating（非常关键，后面 signal / position 会用）=====
-    allow_trade: bool = True
-    allow_trend: bool = True
-    allow_range: bool = True
+    # ===== sub scores（debug / explain）=====
+    trend_score: float = 0.0
+    range_score: float = 0.0
+    risk_score: float = 0.0
+
+    # ===== gating =====
+    allow_trade: bool = False
+    allow_trend: bool = False
+    allow_range: bool = False
     risk_off: bool = False
+
+    # ===== reason / metadata =====
+    reason: str = ""
+    metadata: dict = field(default_factory=dict)

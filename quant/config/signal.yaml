@@ -1,27 +1,19 @@
 signal:
-  enable_risk_filter: true
-  enable_sector_filter: true
+  enable_cooldown: true
+  emit_only_on_switch: true
 
-  allow_trend_buy: true
-  allow_pullback_buy: true
-  allow_breakout_buy: true
+  buy_to_exit_cooldown_hours: 3
+  exit_to_buy_cooldown_hours: 3
 
-  breakout_requires_non_weak_sector: true
+  default_action: hold
 
-  exhausted_action: "reduce"
-  breakdown_action: "sell"
-  high_risk_action: "sell"
-  default_action: "hold"
-  allow_range_buy: true
- 
-  range_upper_action: sell
-  range_distribution_action: reduce
+  # range mode thresholds, based on range_position_short: 0~1
+  range_buy_position_threshold: 0.30
+  range_reduce_position_threshold: 0.70
+  range_sell_position_threshold: 0.85
 
-  range_score_scale: 1.0
-  macro_range_penalty: 0.5
-  sector_range_penalty: 0.7
- 
-  range_reduce_threshold: -0.3 
-  range_buy_threshold: 0.4
-  range_reduce_threshold: -0.3
-  range_sell_threshold: -0.4
+  # risk actions
+  exhausted_action: reduce
+  breakdown_action: sell
+  high_risk_action: sell
+  risk_off_action: avoid

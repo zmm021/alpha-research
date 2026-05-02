@@ -38,17 +38,25 @@ class Indicators:
 
     ATR_PCT = "atr_pct"
 
-    DISTANCE_TO_HIGH = "distance_to_high"
+     
     VOLUME_RATIO = "volume_ratio"
 
     GAP_PCT = "gap_pct"
     PRICE_VS_VWAP = "price_vs_vwap"
     RS_MOMENTUM_Z = "rs_momentum_z"
     VOL_TREND_Z = "vol_trend_z"
-    RANGE_LOW = "range_low"
-    RANGE_HIGH = "range_high"
-    RANGE_POSITION = "range_position"   
 
+    RANGE_LOW_SHORT = "range_low_short"
+    RANGE_LOW_MID = "range_low_mid"
+    RANGE_POSITION_MID = "range_position_mid"
+    RANGE_POSITION_SHORT = "range_position_short"
+    RANGE_HIGH_SHORT = "range_high_short"
+    RANGE_HIGH_MID = "range_high_mid"
+    DISTANCE_TO_HIGH_SHORT = "distance_to_high_short"
+    DISTANCE_TO_HIGH_MID = "distance_to_high_mid"
+    
+    
+    
 class Factors:
     # ===== Macro factors =====
     MACRO_TREND_FACTOR = "macro_trend_factor"
@@ -59,15 +67,18 @@ class Factors:
     SECTOR_RELATIVE_STRENGTH_FACTOR = "sector_relative_strength_factor"
     SECTOR_BREADTH_FACTOR = "sector_breadth_factor"
     SECTOR_PARTICIPATION_FACTOR = "sector_participation_factor"
-    SECTOR_MOMENTUM_FACTOR = "sector_momentun_factor"
+    SECTOR_MOMENTUM_FACTOR = "sector_momentum_factor"
     # ===== Symbol factors =====
     SYMBOL_TREND_FACTOR = "symbol_trend_factor"
     SYMBOL_TREND_SLOPE_FACTOR = "symbol_trend_slope_factor"
     SYMBOL_VOLATILITY_FACTOR = "symbol_volatility_factor"
     SYMBOL_LIQUIDITY_FACTOR = "symbol_liquidity_factor"
-    SYMBOL_POSITION_FACTOR = "symbol_position_factor"
+    
     SYMBOL_INTRADAY_INTENT_FACTOR = "symbol_intraday_intent_factor"
-    SYMBOL_RANGE_POSITION_FACTOR = "symbol_range_position_factor"
+    SYMBOL_POSITION_FACTOR_SHORT = "symbol_position_factor_short"
+    SYMBOL_POSITION_FACTOR_MID = "symbol_position_factor_mid"
+    SYMBOL_RANGE_POSITION_FACTOR_SHORT = "symbol_range_position_factor_short"
+    SYMBOL_RANGE_POSITION_FACTOR_MID = "symbol_range_position_factor_mid"
 
 class StructureScores:
     # ===== Macro contexts =====
@@ -82,10 +93,13 @@ class StructureScores:
     SYMBOL_TREND_STRENGTH = "symbol_trend_strength"
     SYMBOL_TREND_SLOPE = "symbol_trend_slope"
     SYMBOL_REVERSAL_PRESSURE = "symbol_reversal_pressure"
-    SYMBOL_VOLATILITY_STATE = "symbol_volatility_state"
-    SYMBOL_POSITION_QUALITY = "symbol_position_quality"
+    SYMBOL_VOLATILITY_STATE = "symbol_volatility_state" 
     SYMBOL_INTRADAY_INTENT = "symbol_intraday_intent"
     SYMBOL_EXHAUSTION_RISK = "symbol_exhaustion_risk"
     SYMBOL_FAILURE_RISK = "symbol_failure_risk"
-    SYMBOL_LIQUIDITY_QUALITY = "symbol_liquidity_quality"
-    SYMBOL_RANGE_POSITION = "symbol_range_position"
+    SYMBOL_LIQUIDITY_QUALITY = "symbol_liquidity_quality" 
+    
+    SYMBOL_POSITION_QUALITY_SHORT = "symbol_position_quality_short"
+    SYMBOL_POSITION_QUALITY_MID = "symbol_position_quality_mid"
+    SYMBOL_RANGE_POSITION_SHORT = "symbol_range_position_short"
+    SYMBOL_RANGE_POSITION_MID = "symbol_range_position_mid"

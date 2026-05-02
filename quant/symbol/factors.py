@@ -24,11 +24,13 @@ def compute_symbol_factors(
         Indicators.MA50,
         Indicators.MA20_SLOPE,
         Indicators.ATR_PCT,
-        Indicators.DISTANCE_TO_HIGH,
+        Indicators.DISTANCE_TO_HIGH_SHORT,
+        Indicators.DISTANCE_TO_HIGH_MID,
         Indicators.VOLUME_RATIO,
         Indicators.GAP_PCT,
         Indicators.PRICE_VS_VWAP,
-        Indicators.RANGE_POSITION,
+        Indicators.RANGE_POSITION_SHORT,
+        Indicators.RANGE_POSITION_MID,
     ]
     require_indicator_columns(indicator_df, required_cols)
 

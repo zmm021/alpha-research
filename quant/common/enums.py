@@ -61,24 +61,12 @@ class DataQualityState(str, Enum):
     MISSING = "missing"
     INVALID = "invalid"
 
-# regime_enum.py
+ 
 class MarketRegime(str, Enum):
     TREND = "trend"
     RANGE = "range"
     RISK = "risk"
     MIXED = "mixed"
-
-
-
-class MarketRegime(Enum):
-
-    TREND = "trend"
-
-    RANGE = "range"
-
-    RISK = "risk"
-
-    NEUTRAL = "neutral"
 
 class RegimeQuality(Enum):
     STRONG = "strong"

@@ -29,7 +29,7 @@ def compute_macro_factors(indicator_df: pd.DataFrame, config: ConfigDict) -> pd.
 
 def compute_macro_structure(factor_df: pd.DataFrame, config: ConfigDict) -> pd.DataFrame:
 
-    cfg = config["contexts"]
+    cfg = config["structure"]
 
     out = pd.DataFrame(index=factor_df.index)
 

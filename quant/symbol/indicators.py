@@ -43,10 +43,10 @@ def compute_symbol_indicators(
     }
 
     position_cfg = {
-        "high_window": int(indicator_cfg["high_window"]),
-        "range_position_window": int(
-            indicator_cfg.get("range_position_window", indicator_cfg["high_window"])
-        ),
+        "high_window_short": int(indicator_cfg["high_window_short"]),
+        "range_position_window_short": int(indicator_cfg["range_position_window_short"]),
+        "high_window_mid": int(indicator_cfg["high_window_mid"]),
+        "range_position_window_mid": int(indicator_cfg["range_position_window_mid"]),
     }
 
     volume_cfg = {

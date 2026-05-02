@@ -313,7 +313,7 @@ def run_validation(
     end_date: str,
     base_path: str | Path = DEFAULT_BASE_PATH,
     config_dir: str | Path = DEFAULT_CONFIG_DIR,
-    warmup_bars: int = 60,
+    warmup_bars: int = 100,
     symbol_freq: str = "1d",
     sector_freq: str = "1d",
     macro_freq: str = "1d",
@@ -429,7 +429,7 @@ def run_validation(
                         "macro_volatility_factor_macro": "vol_factor",
                         "macro_credit_risk_factor_macro": "credit_factor",
 
-                        "macro_risk_pressure_macro": "risk_context",
+                        "macro_risk_pressure_macro": "risk_pressure",
                         "macro_trend_strength_macro": "trend_factor",
 
                         "macro_state_macro": "macro_state",
@@ -456,10 +456,10 @@ def run_validation(
                         "sector_relative_strength_factor_sector": "rs_factor",
                         "sector_breadth_factor_sector": "breadth_factor",
                         "sector_participation_factor_sector": "participation_factor",
-                        "sector_momentun_factor_sector": "momentum_factor",
+                        "sector_momentum_factor_sector": "momentum_factor",
 
                         # contexts
-                        "sector_support_score_sector": "context",
+                        "sector_support_score_sector": "support_score",
                         "sector_breadth_health_sector": "breadth_health",
                         "sector_momentum_sector": "momentum",
 
@@ -489,11 +489,13 @@ def run_validation(
                 else:
                     # 先尝试从 symbol indicators 取
                     inc_val = symbol_snapshot.indicators.get(col)
-
-                    if inc_val is not None:
+                    indicators = getattr(symbol_snapshot, "indicators", {})
+                    if col in indicators:
                         layer = "symbol_indicator"
+                        inc_val = indicators.get(col)
                     else:
                         layer = "unknown"
+                        inc_val = None
  
             except Exception as e:
                 layer = "error"

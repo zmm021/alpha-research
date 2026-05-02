@@ -1,6 +1,0 @@
-general:
-  use_log_return: false
-  normalize: true
-
-pipeline:
-  fillna_method: "ffill"

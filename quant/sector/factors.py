@@ -39,7 +39,7 @@ def compute_sector_factors(ind_df: pd.DataFrame, config: ConfigDict) -> pd.DataF
 
 def compute_sector_structure(fac_df: pd.DataFrame, config: ConfigDict) -> pd.DataFrame:
 
-    cfg = config["contexts"]
+    cfg = config["structure"]
 
     out = pd.DataFrame(index=fac_df.index)
 

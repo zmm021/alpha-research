@@ -5,7 +5,7 @@ import pandas as pd
 from quant.common.constants import StructureScores
 from quant.common.enums import MacroState
 from quant.common.types import ConfigDict
-
+from quant.common.schemas import StructureOutput
 
 def _single_state(
     trend: float,
@@ -37,3 +37,13 @@ def compute_macro_states(
         ),
         axis=1,
     )
+
+def compute_macro_state_output(
+    structure_output: StructureOutput,
+    config: ConfigDict,
+) -> MacroState:
+    cfg = config["state"]
+    values = structure_output.values
+    trend = float(values.get(StructureScores.MACRO_TREND_STRENGTH, 0.0))
+    risk = float(values.get(StructureScores.MACRO_RISK_PRESSURE, 0.0))
+    return _single_state(trend, risk, cfg)

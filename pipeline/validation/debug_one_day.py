@@ -375,7 +375,7 @@ def main():
                 "sector_relative_strength_factor_sector",
                 "sector_breadth_factor_sector",
                 "sector_participation_factor_sector",
-                "sector_momentun_factor_sector",
+                "sector_momentum_factor_sector",
                 "sector_support_score_sector",
                 "sector_breadth_health_sector",
                 "sector_momentum_sector",

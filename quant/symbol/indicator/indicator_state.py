@@ -6,8 +6,6 @@ from typing import Optional, Any, Dict
 from quant.common.math import (
     RollingMean,
     RollingStd,
-    RollingMax,
-    RollingMin,
     RollingSlope,
     RollingSum,
     EMA,
@@ -17,66 +15,46 @@ from quant.common.math import (
 
 @dataclass
 class SymbolIndicatorState:
-    """
-    Stateful container for symbol-level incremental indicator calculations.
-
-    Design goals:
-    1. Preserve previously available indicator capabilities
-    2. Add batch-compatible indicator column names required by symbol factor pipeline
-    3. Ensure warmup + update do not double-feed the same bar
-    """
-
-    # -------------------------
-    # Trend
-    # -------------------------
     ma_short: RollingMean
     ma_long: RollingMean
     ma_long_slope: RollingSlope
 
-    # optional EMA trend helpers
     ema_short: EMA
     ema_long: EMA
 
-    # -------------------------
-    # Volatility
-    # -------------------------
     atr: RollingATR
     return_std: RollingStd
 
-    # -------------------------
-    # Volume / Liquidity
-    # -------------------------
     volume_ma: RollingMean
     volume_sum: RollingSum
 
-    # -------------------------
-    # Position / Range
-    # -------------------------
-    rolling_high: RollingMax
-    rolling_low: RollingMin
+    high_window_short: int
+    range_position_window_short: int
+    high_window_mid: int
+    range_position_window_mid: int
 
-    # -------------------------
-    # VWAP cumulative state
-    # -------------------------
     cum_pv: float = 0.0
     cum_vol: float = 0.0
 
-    # -------------------------
-    # Previous raw values
-    # -------------------------
     prev_close: Optional[float] = None
     prev_open: Optional[float] = None
     prev_high: Optional[float] = None
     prev_low: Optional[float] = None
     prev_volume: Optional[float] = None
-    _high_window_buffer: list[float] = None
-    _range_high_window_buffer: list[float] = None
-    _low_window_buffer: list[float] = None
-    _volume_buffer: list[float] = None
-    # previous derived values
+
     prev_ma_short: Optional[float] = None
     prev_ma_long: Optional[float] = None
     prev_volume_ma: Optional[float] = None
+
+    _high_short_buffer: list[float] | None = None
+    _range_high_short_buffer: list[float] | None = None
+    _range_low_short_buffer: list[float] | None = None
+
+    _high_mid_buffer: list[float] | None = None
+    _range_high_mid_buffer: list[float] | None = None
+    _range_low_mid_buffer: list[float] | None = None
+
+    _volume_buffer: list[float] | None = None
 
     @classmethod
     def from_config(cls, config: Dict[str, Any]) -> "SymbolIndicatorState":
@@ -86,46 +64,27 @@ class SymbolIndicatorState:
         ma_long_window = int(indicators_cfg["ma_long_window"])
         atr_window = int(indicators_cfg["atr_window"])
         volume_window = int(indicators_cfg["volume_window"])
-        high_window = int(indicators_cfg["high_window"])
-        range_position_window = int(indicators_cfg["range_position_window"])
 
         return cls(
-            # trend
             ma_short=RollingMean(ma_short_window),
             ma_long=RollingMean(ma_long_window),
             ma_long_slope=RollingSlope(ma_long_window),
             ema_short=EMA(ma_short_window),
             ema_long=EMA(ma_long_window),
 
-            # volatility
             atr=RollingATR(atr_window),
             return_std=RollingStd(atr_window),
 
-            # volume / liquidity
             volume_ma=RollingMean(volume_window),
             volume_sum=RollingSum(volume_window),
 
-            # position / range
-            rolling_high=RollingMax(high_window),
-            rolling_low=RollingMin(range_position_window),
+            high_window_short=int(indicators_cfg["high_window_short"]),
+            range_position_window_short=int(indicators_cfg["range_position_window_short"]),
+            high_window_mid=int(indicators_cfg["high_window_mid"]),
+            range_position_window_mid=int(indicators_cfg["range_position_window_mid"]),
         )
 
     def warmup(self, symbol_df) -> None:
-        """
-        Warm up all rolling states from historical symbol dataframe.
-
-        Expected columns:
-        - open
-        - high
-        - low
-        - close
-        - volume
-
-        Important:
-        warmup should fully initialize state.
-        It must NOT push the last bar again after initialization.
-        """
-
         if symbol_df is None or symbol_df.empty:
             return
 
@@ -141,33 +100,14 @@ class SymbolIndicatorState:
             )
 
     def update(self, bar: Dict[str, Any]) -> Dict[str, float]:
-        """
-        Update all indicator states with one new symbol bar.
-
-        Expected bar keys:
-        - open
-        - high
-        - low
-        - close
-        - volume
-
-        Returns a dict that preserves previous incremental outputs while also
-        exposing batch-compatible indicator column names required by factor pipeline.
-        """
-
         open_ = self._safe_float(bar.get("open"), 0.0)
         high = self._safe_float(bar.get("high"), 0.0)
         low = self._safe_float(bar.get("low"), 0.0)
         close = self._safe_float(bar.get("close"), 0.0)
         volume = self._safe_float(bar.get("volume"), 0.0)
-        if self._high_window_buffer is None:
-            self._high_window_buffer = []
-        if self._range_high_window_buffer is None:
-            self._range_high_window_buffer = []
-        if self._low_window_buffer is None:
-            self._low_window_buffer = []
-        if self._volume_buffer is None:
-            self._volume_buffer = []
+
+        self._init_buffers()
+
         # -------- returns / gaps --------
         if self.prev_close is None or self.prev_close == 0:
             return_1d = 0.0
@@ -176,7 +116,7 @@ class SymbolIndicatorState:
         else:
             return_1d = (close / self.prev_close) - 1.0
             gap_return = (open_ / self.prev_close) - 1.0
-            gap_pct = gap_return    
+            gap_pct = gap_return
 
         intraday_return = (close / open_) - 1.0 if open_ != 0 else 0.0
 
@@ -184,21 +124,22 @@ class SymbolIndicatorState:
         ma_short = self.ma_short.update(close)
         ma_long = self.ma_long.update(close)
 
-        # keep old slope helper
         ma_long_slope = self.ma_long_slope.update(close)
 
-        # batch-compatible slopes are based on MA deltas
-        ma_short_slope = 0.0 if self.prev_ma_short is None else (ma_short - self.prev_ma_short)
-        ma_long_slope_raw = 0.0 if self.prev_ma_long is None else (ma_long - self.prev_ma_long)
+        ma_short_slope = (
+            0.0 if self.prev_ma_short is None else ma_short - self.prev_ma_short
+        )
+        ma_long_slope_raw = (
+            0.0 if self.prev_ma_long is None else ma_long - self.prev_ma_long
+        )
 
         ema_short = self.ema_short.update(close)
         ema_long = self.ema_long.update(close)
-
         ma_cross = ma_short - ma_long
+
         # -------- volatility --------
         atr = self.atr.update(high=high, low=low, close=close)
         atr_pct = atr / close if close != 0 else None
-
         return_std = self.return_std.update(return_1d)
 
         # -------- volume / liquidity --------
@@ -207,7 +148,11 @@ class SymbolIndicatorState:
             self._volume_buffer.pop(0)
 
         volume_ready = len(self._volume_buffer) == self.volume_ma.window
-        volume_ma = sum(self._volume_buffer) / len(self._volume_buffer) if volume_ready else None
+        volume_ma = (
+            sum(self._volume_buffer) / len(self._volume_buffer)
+            if volume_ready
+            else None
+        )
         volume_sum = sum(self._volume_buffer)
 
         volume_ratio = (
@@ -216,46 +161,40 @@ class SymbolIndicatorState:
             else None
         )
 
-        # -------- position / range --------
-        # -------- position / range --------
-        # distance_to_high uses high_window
-        self._high_window_buffer.append(high)
-        if len(self._high_window_buffer) > self.rolling_high.window:
-            self._high_window_buffer.pop(0)
-
-        high_ready = len(self._high_window_buffer) == self.rolling_high.window
-        rolling_high = max(self._high_window_buffer) if high_ready else None
-
-        distance_to_high = (
-            (rolling_high - close) / close
-            if high_ready and close != 0 and rolling_high is not None
-            else None
+        # -------- position / range short --------
+        (
+            range_high_short,
+            range_low_short,
+            range_position_short,
+            distance_to_high_short,
+        ) = self._update_range(
+            high=high,
+            low=low,
+            close=close,
+            high_buffer=self._high_short_buffer,
+            range_high_buffer=self._range_high_short_buffer,
+            range_low_buffer=self._range_low_short_buffer,
+            high_window=self.high_window_short,
+            range_position_window=self.range_position_window_short,
         )
 
-        # range_high / range_low / range_position use range_position_window
-        self._range_high_window_buffer.append(high)
-        if len(self._range_high_window_buffer) > self.rolling_low.window:
-            self._range_high_window_buffer.pop(0)
+        # -------- position / range mid --------
+        (
+            range_high_mid,
+            range_low_mid,
+            range_position_mid,
+            distance_to_high_mid,
+        ) = self._update_range(
+            high=high,
+            low=low,
+            close=close,
+            high_buffer=self._high_mid_buffer,
+            range_high_buffer=self._range_high_mid_buffer,
+            range_low_buffer=self._range_low_mid_buffer,
+            high_window=self.high_window_mid,
+            range_position_window=self.range_position_window_mid,
+        )
 
-        self._low_window_buffer.append(low)
-        if len(self._low_window_buffer) > self.rolling_low.window:
-            self._low_window_buffer.pop(0)
-
-        range_high_ready = len(self._range_high_window_buffer) == self.rolling_low.window
-        range_low_ready = len(self._low_window_buffer) == self.rolling_low.window
-        range_ready = range_high_ready and range_low_ready
-
-        range_high = max(self._range_high_window_buffer) if range_high_ready else None
-        range_low = min(self._low_window_buffer) if range_low_ready else None
-
-        if not range_ready or range_high is None or range_low is None:
-            range_position = None
-        else:
-            range_width = range_high - range_low
-            if range_width == 0:
-                range_position = None
-            else:
-                range_position = min(max((close - range_low) / range_width, 0.0), 1.0)
         # -------- VWAP --------
         typical_price = (high + low + close) / 3.0
         self.cum_pv += typical_price * volume
@@ -275,30 +214,18 @@ class SymbolIndicatorState:
         self.prev_ma_long = ma_long
         self.prev_volume_ma = volume_ma
 
-        # Return a superset:
-        # 1. old incremental fields
-        # 2. batch-compatible fields needed by factor pipeline
         return {
-            # ==========================================
-            # raw-ish
-            # ==========================================
             "open": open_,
             "high": high,
             "low": low,
             "close": close,
             "volume": volume,
 
-            # ==========================================
-            # return / intraday
-            # ==========================================
             "return_1d": return_1d,
             "gap_return": gap_return,
             "gap_pct": gap_pct,
             "intraday_return": intraday_return,
 
-            # ==========================================
-            # trend (original names kept)
-            # ==========================================
             "ma_short": ma_short,
             "ma_long": ma_long,
             "ma_long_slope": ma_long_slope,
@@ -306,44 +233,106 @@ class SymbolIndicatorState:
             "ema_long": ema_long,
             "ma_cross": ma_cross,
 
-            # ==========================================
-            # batch-compatible trend names
-            # ==========================================
             "ma20": ma_short,
             "ma50": ma_long,
             "ma20_slope": ma_short_slope,
             "ma50_slope": ma_long_slope_raw,
 
-            # ==========================================
-            # volatility
-            # ==========================================
             "atr": atr,
             "atr_pct": atr_pct,
             "return_std": return_std,
 
-            # ==========================================
-            # volume / liquidity
-            # ==========================================
             "volume_ma": volume_ma,
             "volume_sum": volume_sum,
             "volume_ratio": volume_ratio,
 
-            # ==========================================
-            # position / range
-            # ==========================================
-            "rolling_high": rolling_high,
-            "rolling_low": range_low,
-            "range_high": range_high,
-            "range_low": range_low,
-            "range_position": range_position,
-            "distance_to_high": distance_to_high,
+            "range_high_short": range_high_short,
+            "range_low_short": range_low_short,
+            "range_position_short": range_position_short,
+            "distance_to_high_short": distance_to_high_short,
 
-            # ==========================================
-            # vwap
-            # ==========================================
+            "range_high_mid": range_high_mid,
+            "range_low_mid": range_low_mid,
+            "range_position_mid": range_position_mid,
+            "distance_to_high_mid": distance_to_high_mid,
+
             "vwap": vwap,
             "price_vs_vwap": price_vs_vwap,
         }
+
+    def _init_buffers(self) -> None:
+        if self._high_short_buffer is None:
+            self._high_short_buffer = []
+        if self._range_high_short_buffer is None:
+            self._range_high_short_buffer = []
+        if self._range_low_short_buffer is None:
+            self._range_low_short_buffer = []
+
+        if self._high_mid_buffer is None:
+            self._high_mid_buffer = []
+        if self._range_high_mid_buffer is None:
+            self._range_high_mid_buffer = []
+        if self._range_low_mid_buffer is None:
+            self._range_low_mid_buffer = []
+
+        if self._volume_buffer is None:
+            self._volume_buffer = []
+
+    @staticmethod
+    def _update_range(
+        *,
+        high: float,
+        low: float,
+        close: float,
+        high_buffer: list[float],
+        range_high_buffer: list[float],
+        range_low_buffer: list[float],
+        high_window: int,
+        range_position_window: int,
+    ) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+        # distance_to_high uses high_window
+        high_buffer.append(high)
+        if len(high_buffer) > high_window:
+            high_buffer.pop(0)
+
+        high_ready = len(high_buffer) == high_window
+        rolling_high = max(high_buffer) if high_ready else None
+
+        distance_to_high = (
+            (rolling_high - close) / close
+            if high_ready and close != 0 and rolling_high is not None
+            else None
+        )
+
+        # range high / low / position use range_position_window
+        range_high_buffer.append(high)
+        if len(range_high_buffer) > range_position_window:
+            range_high_buffer.pop(0)
+
+        range_low_buffer.append(low)
+        if len(range_low_buffer) > range_position_window:
+            range_low_buffer.pop(0)
+
+        range_high_ready = len(range_high_buffer) == range_position_window
+        range_low_ready = len(range_low_buffer) == range_position_window
+        range_ready = range_high_ready and range_low_ready
+
+        range_high = max(range_high_buffer) if range_high_ready else None
+        range_low = min(range_low_buffer) if range_low_ready else None
+
+        if not range_ready or range_high is None or range_low is None:
+            range_position = None
+        else:
+            range_width = range_high - range_low
+            if range_width == 0:
+                range_position = None
+            else:
+                range_position = min(
+                    max((close - range_low) / range_width, 0.0),
+                    1.0,
+                )
+
+        return range_high, range_low, range_position, distance_to_high
 
     @staticmethod
     def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
