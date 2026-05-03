@@ -1,0 +1,20 @@
+daily_structure:
+  default_start_date: "2025-01-01"
+  base_path: "data/market"
+  config_dir: "quant/config"
+
+  # 为 rolling 指标预留历史窗口
+  lookback_days: 1200
+
+  macro:
+    enabled: true
+
+  sectors:
+    - sector_name: "rare_earth"
+      sector_etf: "REMX"
+      member_asset_type: null
+
+  symbols:
+    - "UUUU"
+    - "MP"
+    - "CRML"
