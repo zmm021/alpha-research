@@ -145,7 +145,8 @@ def upsert_daily_symbol_structure(row: dict[str, Any]) -> None:
     Required:
         as_of_date
         symbol
-        symbol_state
+        symbol_structure_state
+        symbol_liquidity_state
     """
     sql, params = _build_upsert_sql(
         table="daily_symbol_structure",

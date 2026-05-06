@@ -13,7 +13,7 @@ class SectorState(str, Enum):
     WEAK = "weak"
 
 
-class SymbolState(str, Enum):
+class SymbolStructureState(str, Enum):
     # ===== TREND =====
     TREND_EARLY = "trend_early"                # 刚启动
     TREND_CONTINUATION = "trend_continuation"  # 主升段
@@ -39,6 +39,11 @@ class SymbolState(str, Enum):
     REVERSAL = "reversal"                      # 结构反转
     BREAKDOWN_RISK = "breakdown_risk"          # 下行风险
 
+class SymbolLiquidityState(str, Enum):
+    LIQUID = "liquid"
+    NORMAL = "normal"
+    THIN = "thin"
+    DRY = "dry"
 
 class ActionSignal(str, Enum):
     BUY = "buy"

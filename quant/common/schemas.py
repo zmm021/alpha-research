@@ -7,7 +7,8 @@ from quant.common.enums import (
     DataQualityState,
     MacroState,
     SectorState,
-    SymbolState,
+    SymbolStructureState,
+    SymbolLiquidityState,
 )
 
 
@@ -54,7 +55,8 @@ class StructureOutput:
 class StateOutput:
     macro_state: MacroState = MacroState.NEUTRAL
     sector_state: SectorState = SectorState.MIXED
-    symbol_state: SymbolState = SymbolState.RANGE_NEUTRAL
+    symbol_structure_state: SymbolStructureState = SymbolStructureState.RANGE_NEUTRAL
+    symbol_liquidity_state: SymbolLiquidityState = SymbolLiquidityState.NORMAL
     data_quality_state: DataQualityState = DataQualityState.OK
 
 

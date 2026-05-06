@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
 
 from postgres.daily_structure_repo import get_latest_daily_structure_bundle
@@ -40,16 +39,20 @@ class S1SlowLoader:
         symbol_row = bundle.get("symbol")
 
         if macro_row is None:
-            raise ValueError(f"Missing macro slow structure for as_of_date={ctx.as_of_date}")
+            raise ValueError(
+                f"Missing macro slow structure for as_of_date={ctx.as_of_date}"
+            )
 
         if sector_row is None:
             raise ValueError(
-                f"Missing sector slow structure for sector={ctx.sector}, as_of_date={ctx.as_of_date}"
+                f"Missing sector slow structure for sector={ctx.sector}, "
+                f"as_of_date={ctx.as_of_date}"
             )
 
         if symbol_row is None:
             raise ValueError(
-                f"Missing symbol slow structure for symbol={ctx.symbol}, as_of_date={ctx.as_of_date}"
+                f"Missing symbol slow structure for symbol={ctx.symbol}, "
+                f"as_of_date={ctx.as_of_date}"
             )
 
         s1 = S1StructureContext(
@@ -59,7 +62,13 @@ class S1SlowLoader:
 
             slow_macro_state=str(macro_row.get("macro_state") or ""),
             slow_sector_state=str(sector_row.get("sector_state") or ""),
-            slow_symbol_state=str(symbol_row.get("symbol_state") or ""),
+
+            slow_symbol_structure_state=str(
+                symbol_row.get("symbol_structure_state") or ""
+            ),
+            slow_symbol_liquidity_state=str(
+                symbol_row.get("symbol_liquidity_state") or ""
+            ),
 
             macro_slow=self._clean_row(macro_row),
             sector_slow=self._clean_row(sector_row),

@@ -12,7 +12,6 @@ import yaml
 from utils.bar_utls import BarFrequency
 from utils.parquet_loader import (
     load_macro_bars,
-    load_sector_bars,
     load_symbol_bars,
 )
 
@@ -26,7 +25,10 @@ from quant.sector.state import compute_sector_states
 
 from quant.symbol.indicators import compute_symbol_indicators
 from quant.symbol.factors import compute_symbol_factors, compute_symbol_structure
-from quant.symbol.state import compute_symbol_states
+from quant.symbol.state import (
+    compute_symbol_states,
+    compute_symbol_liquidity_state,
+)
 
 from postgres.meta_repo import get_sector_symbols
 from postgres.daily_structure_repo import (
@@ -75,10 +77,6 @@ def _to_date(d: str | date) -> date:
     return datetime.strptime(str(d), "%Y-%m-%d").date()
 
 
-def _date_str(d: str | date) -> str:
-    return _to_date(d).isoformat()
-
-
 def _yesterday() -> date:
     return date.today() - timedelta(days=1)
 
@@ -93,14 +91,11 @@ def _get_run_window(cfg: dict) -> tuple[date, date]:
     yesterday = _yesterday()
 
     last_run = get_last_successful_daily_structure_run()
-
     if not last_run:
         return default_start, yesterday
 
     last_end = _to_date(last_run["end_date"])
-    next_start = last_end + timedelta(days=1)
-
-    return next_start, yesterday
+    return last_end + timedelta(days=1), yesterday
 
 
 def _with_lookback(start_date: date, lookback_days: int) -> date:
@@ -156,16 +151,6 @@ def _resolve_macro_inputs(
     return spy_df, vix_df, credit_df
 
 
-def _resolve_sector_etf_df(
-    sector_member_dfs: dict[str, pd.DataFrame],
-    sector_etf: str,
-) -> pd.DataFrame | None:
-    if sector_etf not in sector_member_dfs:
-        logger.warning("Sector ETF %s not found in sector bars, skip sector", sector_etf)
-        return None
-    return sector_member_dfs[sector_etf]
-
-
 def _safe_member_dfs(
     *,
     base_path: str,
@@ -203,6 +188,8 @@ def _compute_macro_daily(
     config: dict,
     run_id: str,
 ) -> date | None:
+    from utils.parquet_loader import load_macro_bars
+
     macro_data = load_macro_bars(
         base_path=base_path,
         start_date=start_load.isoformat(),
@@ -241,9 +228,8 @@ def _compute_macro_daily(
         }
 
         for col, value in row.items():
-            if col == "macro_state":
-                continue
-            record[col] = _clean_value(value)
+            if col != "macro_state":
+                record[col] = _clean_value(value)
 
         upsert_daily_macro_structure(record)
         actual_last = as_of_date
@@ -263,6 +249,8 @@ def _compute_sector_daily(
     config: dict,
     run_id: str,
 ) -> date | None:
+    from utils.parquet_loader import load_macro_bars
+
     member_symbols = get_sector_symbols(
         sector_name=sector_name,
         asset_type=member_asset_type,
@@ -283,8 +271,9 @@ def _compute_sector_daily(
         logger.warning("No sector data for %s, skip", sector_name)
         return None
 
-    sector_etf_df = _resolve_sector_etf_df(sector_member_dfs, sector_etf)
+    sector_etf_df = sector_member_dfs.get(sector_etf)
     if sector_etf_df is None or sector_etf_df.empty:
+        logger.warning("Sector ETF %s not found, skip sector", sector_etf)
         return None
 
     macro_data = load_macro_bars(
@@ -296,6 +285,7 @@ def _compute_sector_daily(
     )
     macro_data = {k: _ensure_datetime_index(v) for k, v in macro_data.items()}
     spy_df = macro_data.get("SPY")
+
     if spy_df is None or spy_df.empty:
         raise ValueError("Missing SPY for sector computation")
 
@@ -328,9 +318,8 @@ def _compute_sector_daily(
         }
 
         for col, value in row.items():
-            if col == "sector_state":
-                continue
-            record[col] = _clean_value(value)
+            if col != "sector_state":
+                record[col] = _clean_value(value)
 
         upsert_daily_sector_structure(record)
         actual_last = as_of_date
@@ -365,12 +354,53 @@ def _compute_symbol_daily(
     ind = compute_symbol_indicators(df, config)
     fac = compute_symbol_factors(ind, config)
     struct = compute_symbol_structure(fac, config)
-    states = compute_symbol_states(struct, config)
+
+    structure_states = compute_symbol_states(struct, config)
+
+    liquidity_states = struct.apply(
+        lambda row: compute_symbol_liquidity_state(
+            liquidity_quality=float(row.get("symbol_liquidity_quality", 0.0))
+        ),
+        axis=1,
+    )
 
     full = ind.join(fac).join(struct)
-    full["symbol_state"] = states
+    full["symbol_structure_state"] = structure_states
+    full["symbol_liquidity_state"] = liquidity_states
 
     actual_last: date | None = None
+
+    allowed_cols = {
+        "ma20",
+        "ma50",
+        "ma20_slope",
+        "ma50_slope",
+        "atr_pct",
+        "volume_ratio",
+        "range_position_short",
+        "range_position_mid",
+        "distance_to_high_short",
+        "distance_to_high_mid",
+        "symbol_trend_factor",
+        "symbol_trend_slope_factor",
+        "symbol_volatility_factor",
+        "symbol_liquidity_factor",
+        "symbol_position_factor_short",
+        "symbol_position_factor_mid",
+        "symbol_range_position_factor_short",
+        "symbol_range_position_factor_mid",
+        "symbol_trend_strength",
+        "symbol_trend_slope",
+        "symbol_volatility_state",
+        "symbol_liquidity_quality",
+        "symbol_position_quality_short",
+        "symbol_position_quality_mid",
+        "symbol_range_position_short",
+        "symbol_range_position_mid",
+        "symbol_reversal_pressure",
+        "symbol_exhaustion_risk",
+        "symbol_failure_risk",
+    }
 
     for ts, row in full.iterrows():
         as_of_date = _index_date(ts)
@@ -380,42 +410,9 @@ def _compute_symbol_daily(
         record = {
             "as_of_date": as_of_date,
             "symbol": symbol,
-            "symbol_state": _clean_value(row.get("symbol_state")),
+            "symbol_structure_state": _clean_value(row.get("symbol_structure_state")),
+            "symbol_liquidity_state": _clean_value(row.get("symbol_liquidity_state")),
             "run_id": run_id,
-        }
-
-        allowed_cols = {
-            "ma20",
-            "ma50",
-            "ma20_slope",
-            "ma50_slope",
-            "atr_pct",
-            "volume_ratio",
-            "range_position_short",
-            "range_position_mid",
-            "distance_to_high_short",
-            "distance_to_high_mid",
-
-            "symbol_trend_factor",
-            "symbol_trend_slope_factor",
-            "symbol_volatility_factor",
-            "symbol_liquidity_factor",
-            "symbol_position_factor_short",
-            "symbol_position_factor_mid",
-            "symbol_range_position_factor_short",
-            "symbol_range_position_factor_mid",
-
-            "symbol_trend_strength",
-            "symbol_trend_slope",
-            "symbol_volatility_state",
-            "symbol_liquidity_quality",
-            "symbol_position_quality_short",
-            "symbol_position_quality_mid",
-            "symbol_range_position_short",
-            "symbol_range_position_mid",
-            "symbol_reversal_pressure",
-            "symbol_exhaustion_risk",
-            "symbol_failure_risk",
         }
 
         for col, value in row.items():
@@ -435,17 +432,18 @@ def run_daily_structure_pipeline(config_path: str | Path = DEFAULT_CONFIG_PATH) 
     config_bundle = _load_config_bundle(cfg["config_dir"])
 
     run_start, run_end = _get_run_window(cfg)
+
     logger.info("Loaded daily_structure cfg: %s", cfg)
     logger.info("Resolved run_start=%s run_end=%s", run_start, run_end)
     logger.info("Today=%s yesterday=%s", date.today(), _yesterday())
     logger.info("Last successful run: %s", get_last_successful_daily_structure_run())
+
     if run_start > run_end:
         logger.info("No new dates to process. start=%s end=%s", run_start, run_end)
         return
 
     lookback_days = int(cfg.get("lookback_days", 1200))
     start_load = _with_lookback(run_start, lookback_days)
-
     run_id = _run_id(run_start, run_end)
 
     symbols = cfg.get("symbols", []) or []

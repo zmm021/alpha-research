@@ -2,133 +2,96 @@ from __future__ import annotations
 
 from typing import Any
 
-from quant.macro.macro_engine import MacroEngine
-from quant.sector.sector_engine import SectorEngine
 from quant.symbol.symbol_engine import SymbolEngine
-
-from quant.context.s1_structure_context import S1StructureContext
-from quant.common.constants import StructureScores
+from quant.engine.context.alpha_context import AlphaContext
+from quant.engine.context.s1_structure_context import S1StructureContext
 
 
 class S1StructureEngine:
     """
     S1 Structure Engine
 
-    负责：
-        - 调用 macro / sector / symbol engine
-        - 聚合 snapshot
-        - 构建 S1StructureContext
+    Responsibilities:
+        - manage runtime symbol fast engine
+        - warmup symbol fast rolling state
+        - update symbol fast on each new bar
+        - merge fast output into existing S1 slow context
+
+    Important:
+        - does NOT load slow data from Postgres
+        - does NOT compute macro / sector
+        - slow data should be loaded by S1SlowLoader outside this engine
     """
 
     def __init__(self, config: dict):
-        self.macro_engine = MacroEngine(config["macro"])
-        self.sector_engine = SectorEngine(config["sector"])
         self.symbol_engine = SymbolEngine(config["symbol"])
 
-    # ==========================================
-    # Warmup
-    # ==========================================
-    def warmup(
-        self,
-        macro_data: dict,
-        sector_data: dict,
-        symbol_data: dict,
-    ):
-        self.macro_engine.warmup(**macro_data)
-        self.sector_engine.warmup(**sector_data)
-        self.symbol_engine.warmup(symbol_data)
+    def warmup(self, symbol_df) -> None:
+        """
+        Warm up runtime symbol fast engine once.
+        """
+        self.symbol_engine.warmup(symbol_df)
 
-    # ==========================================
-    # Update
-    # ==========================================
     def update(
         self,
-        macro_bar: dict,
-        sector_bar: dict,
-        symbol_bar: dict,
+        *,
+        ctx: AlphaContext,
+        symbol_bar: dict[str, Any],
     ) -> S1StructureContext:
+        """
+        Update S1 for one new bar.
 
-        macro_snap = self.macro_engine.update(macro_bar)
-        sector_snap = self.sector_engine.update(sector_bar)
-        symbol_snap = self.symbol_engine.update(symbol_bar)
+        Expected flow before calling this:
+            S1SlowLoader has already populated ctx.s1_structure
+            when as_of_date changed.
 
-        return self._build_context(
-            macro_snap,
-            sector_snap,
-            symbol_snap,
+        This method only adds / refreshes symbol fast data.
+        """
+        if ctx.s1_structure is None:
+            raise ValueError(
+                "ctx.s1_structure is None. "
+                "S1SlowLoader must load slow context before S1StructureEngine.update()."
+            )
+
+        s1 = ctx.s1_structure
+
+        symbol_snapshot = self.symbol_engine.update(symbol_bar)
+
+        s1.symbol = ctx.symbol
+        s1.sector_name = ctx.sector
+        s1.timestamp = ctx.timestamp
+
+        # fast runtime states
+        s1.symbol_structure_state = self._to_str(
+            symbol_snapshot.symbol_structure_state
+        )
+        s1.symbol_liquidity_state = self._to_str(
+            symbol_snapshot.symbol_liquidity_state
         )
 
-    # ==========================================
-    # Build S1 Context
-    # ==========================================
-    def _build_context(
-        self,
-        macro_snap,
-        sector_snap,
-        symbol_snap,
-    ) -> S1StructureContext:
-
-        symbol_scores = symbol_snap.structure_scores
-        sector_scores = sector_snap.structure_scores
-        macro_scores = macro_snap.structure_scores
-
-        return S1StructureContext(
-            # ===== states =====
-            macro_state=macro_snap.macro_state,
-            sector_state=sector_snap.sector_state,
-            symbol_state=symbol_snap.symbol_state,
-
-            # ===== scores =====
-            macro_scores=macro_scores,
-            sector_scores=sector_scores,
-            symbol_scores=symbol_scores,
-
-            # ===== multi-scale =====
-            range_position_short=symbol_scores.get(
-                StructureScores.SYMBOL_RANGE_POSITION_SHORT
+        # fast runtime data
+        s1.symbol_fast = {
+            "indicators": symbol_snapshot.indicators,
+            "factors": symbol_snapshot.factors,
+            "structure_scores": symbol_snapshot.structure_scores,
+            "symbol_structure_state": self._to_str(
+                symbol_snapshot.symbol_structure_state
             ),
-            range_position_mid=symbol_scores.get(
-                StructureScores.SYMBOL_RANGE_POSITION_MID
+            "symbol_liquidity_state": self._to_str(
+                symbol_snapshot.symbol_liquidity_state
             ),
+        }
 
-            trend_slope_short=symbol_scores.get(
-                StructureScores.SYMBOL_TREND_SLOPE
-            ),
-            trend_slope_mid=symbol_scores.get(
-                StructureScores.SYMBOL_TREND_SLOPE
-            ),
+        # debug
+        s1.symbol_snapshot = symbol_snapshot
 
-            trend_strength=symbol_scores.get(
-                StructureScores.SYMBOL_TREND_STRENGTH
-            ),
+        ctx.s1_structure = s1
+        return s1
 
-            liquidity_quality=symbol_scores.get(
-                StructureScores.SYMBOL_LIQUIDITY_QUALITY
-            ),
-
-            reversal_pressure=symbol_scores.get(
-                StructureScores.SYMBOL_REVERSAL_PRESSURE
-            ),
-
-            volatility_state=symbol_scores.get(
-                StructureScores.SYMBOL_VOLATILITY_STATE
-            ),
-
-            # ===== macro / sector shortcuts =====
-            macro_risk_pressure=macro_scores.get(
-                StructureScores.MACRO_RISK_PRESSURE
-            ),
-
-            sector_support_score=sector_scores.get(
-                StructureScores.SECTOR_SUPPORT_SCORE
-            ),
-
-            sector_breadth_health=sector_scores.get(
-                StructureScores.SECTOR_BREADTH_HEALTH
-            ),
-
-            # ===== snapshots =====
-            macro_snapshot=macro_snap,
-            sector_snapshot=sector_snap,
-            symbol_snapshot=symbol_snap,
-        )
+    @staticmethod
+    def _to_str(v) -> str:
+        if v is None:
+            return ""
+        if hasattr(v, "value"):
+            return str(v.value)
+        return str(v)

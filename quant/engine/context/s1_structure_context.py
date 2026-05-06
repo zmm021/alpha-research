@@ -1,67 +1,87 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
 
+from quant.symbol.symbol_engine import SymbolEngine
+from quant.engine.context.alpha_context import AlphaContext
+from quant.engine.context.s1_structure_context import S1StructureContext
 
-@dataclass
-class S1StructureContext:
+
+class S1StructureEngine:
     """
-    S1 Structure Context
+    S1 Structure Engine
 
-    只承载结构信息，不做决策。
+    Responsibilities:
+        - manage runtime symbol fast engine
+        - warmup symbol fast rolling state
+        - update symbol fast on each new bar
+        - merge fast output into existing S1 slow context
 
-    slow:
-        来自 Postgres daily structure。
-        macro / sector / symbol 都有 slow。
-
-    fast:
-        来自 runtime 当前 symbol bar。
-        当前阶段只有 symbol fast。
-
-    设计原则：
-        1. slow 定义背景结构
-        2. fast 定义当前行为
-        3. S1 不决定后续使用 slow 还是 fast
-        4. S2/S3/S4/S5 自行选择 slow / fast
-        5. 不在 S1 里做过多 shortcuts，避免隐藏信息来源
+    Important:
+        - does NOT load slow data from Postgres
+        - does NOT compute macro / sector
+        - slow data should be loaded by S1SlowLoader outside this engine
     """
 
-    # ===== identity =====
-    symbol: str = ""
-    sector_name: str = ""
-    timestamp: Any | None = None
+    def __init__(self, config: dict):
+        self.symbol_engine = SymbolEngine(config["symbol"])
 
-    # ===== slow states（DB daily）=====
-    slow_macro_state: str = ""
-    slow_sector_state: str = ""
-    slow_symbol_state: str = ""
+    def warmup(self, symbol_df) -> None:
+        """
+        Warm up runtime symbol fast engine once.
+        """
+        self.symbol_engine.warmup(symbol_df)
 
-    # ===== fast state（runtime symbol chain）=====
-    symbol_state: str = ""
+    def update(
+        self,
+        *,
+        ctx: AlphaContext,
+        symbol_bar: dict[str, Any],
+    ) -> S1StructureContext:
+        """
+        Update S1 for one new bar.
 
-    # ===== slow variables（DB daily）=====
-    macro_slow: dict[str, Any] = field(default_factory=dict)
-    sector_slow: dict[str, Any] = field(default_factory=dict)
-    symbol_slow: dict[str, Any] = field(default_factory=dict)
+        Expected flow before calling this:
+            S1SlowLoader has already populated ctx.s1_structure
+            when as_of_date changed.
 
-    # ===== fast variables（runtime）=====
-    symbol_fast: dict[str, Any] = field(default_factory=dict)
+        This method only adds / refreshes symbol fast data.
+        """
+        if ctx.s1_structure is None:
+            raise ValueError(
+                "ctx.s1_structure is None. "
+                "S1SlowLoader must load slow context before S1StructureEngine.update()."
+            )
 
-    # ===== debug / trace =====
-    slow_bundle: dict[str, Any] = field(default_factory=dict)
-    symbol_snapshot: Any | None = None
-    feature_row: dict[str, Any] | None = None
+        s1 = ctx.s1_structure
 
-    # ===== helpers =====
-    def get_macro_slow(self, key: str, default: Any = None) -> Any:
-        return self.macro_slow.get(key, default)
+        symbol_snapshot = self.symbol_engine.update(symbol_bar)
 
-    def get_sector_slow(self, key: str, default: Any = None) -> Any:
-        return self.sector_slow.get(key, default)
+        s1.symbol = ctx.symbol
+        s1.sector_name = ctx.sector
+        s1.timestamp = ctx.timestamp
 
-    def get_symbol_slow(self, key: str, default: Any = None) -> Any:
-        return self.symbol_slow.get(key, default)
+        # fast runtime state
+        s1.symbol_state = self._to_str(symbol_snapshot.state)
 
-    def get_symbol_fast(self, key: str, default: Any = None) -> Any:
-        return self.symbol_fast.get(key, default)
+        # fast runtime data
+        s1.symbol_fast = {
+            "indicators": symbol_snapshot.indicators,
+            "factors": symbol_snapshot.factors,
+            "structure_scores": symbol_snapshot.structure_scores,
+            "state": self._to_str(symbol_snapshot.state),
+        }
+
+        # debug
+        s1.symbol_snapshot = symbol_snapshot
+
+        ctx.s1_structure = s1
+        return s1
+
+    @staticmethod
+    def _to_str(v) -> str:
+        if v is None:
+            return ""
+        if hasattr(v, "value"):
+            return str(v.value)
+        return str(v)

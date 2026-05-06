@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from quant.common.constants import StructureScores
-from quant.common.enums import SymbolState
+from quant.common.enums import SymbolStructureState, SymbolLiquidityState
 from quant.common.schemas import StructureOutput
 from quant.common.types import ConfigDict
 
@@ -21,7 +21,7 @@ def _compute_single_symbol_state(
     failure_risk: float,
     reversal_pressure: float,
     config: ConfigDict,
-) -> SymbolState:
+) -> SymbolStructureState:
     state_cfg = config["state"]
 
     trend_threshold = float(state_cfg.get("trend_threshold", 0.30))
@@ -88,13 +88,13 @@ def _compute_single_symbol_state(
         and reversal_pressure >= strong_reversal_pressure_threshold
         and volatility_state >= risk_vol_threshold
     ):
-        return SymbolState.RISK_HIGH
+        return SymbolStructureState.RISK_HIGH
 
     if (
         failure_risk >= failure_threshold
         and reversal_pressure >= reversal_pressure_threshold
     ):
-        return SymbolState.BREAKDOWN_RISK
+        return SymbolStructureState.BREAKDOWN_RISK
 
     # 2. Range-like state uses short position
     in_range_base = (
@@ -106,12 +106,12 @@ def _compute_single_symbol_state(
 
     if in_range_base:
         if range_position_short <= range_buy_position_threshold:
-            return SymbolState.RANGE_ACCUMULATION
+            return SymbolStructureState.RANGE_ACCUMULATION
 
         if range_position_short >= range_sell_position_threshold:
-            return SymbolState.RANGE_DISTRIBUTION
+            return SymbolStructureState.RANGE_DISTRIBUTION
 
-        return SymbolState.RANGE_NEUTRAL
+        return SymbolStructureState.RANGE_NEUTRAL
 
     # 3. Breakout uses mid position
     if (
@@ -121,7 +121,7 @@ def _compute_single_symbol_state(
         and failure_risk < breakout_failure_threshold
         and reversal_pressure < reversal_pressure_threshold
     ):
-        return SymbolState.BREAKOUT
+        return SymbolStructureState.BREAKOUT
 
     if (
         range_position_mid >= breakout_setup_range_position_threshold
@@ -130,14 +130,14 @@ def _compute_single_symbol_state(
         and failure_risk < breakout_failure_threshold
         and reversal_pressure < reversal_pressure_threshold
     ):
-        return SymbolState.BREAKOUT_SETUP
+        return SymbolStructureState.BREAKOUT_SETUP
 
     if (
         range_position_mid >= breakout_setup_range_position_threshold
         and intraday_intent >= breakout_intent_threshold
         and failure_risk >= breakout_failure_threshold
     ):
-        return SymbolState.BREAKOUT_FAILED
+        return SymbolStructureState.BREAKOUT_FAILED
 
     # 4. Pullback inside trend uses mid position
     if (
@@ -146,7 +146,7 @@ def _compute_single_symbol_state(
         and failure_risk < rising_risk_threshold
         and reversal_pressure < reversal_pressure_threshold
     ):
-        return SymbolState.PULLBACK
+        return SymbolStructureState.PULLBACK
 
     if (
         trend_strength >= trend_threshold
@@ -154,7 +154,7 @@ def _compute_single_symbol_state(
         and failure_risk < rising_risk_threshold
         and reversal_pressure < reversal_pressure_threshold
     ):
-        return SymbolState.PULLBACK
+        return SymbolStructureState.PULLBACK
 
     # 5. Trend lifecycle
     if trend_strength >= strong_trend_threshold:
@@ -162,19 +162,19 @@ def _compute_single_symbol_state(
             exhaustion_risk >= late_trend_exhaustion_threshold
             or reversal_pressure >= reversal_pressure_threshold
         ):
-            return SymbolState.TREND_LATE
-        return SymbolState.TREND_CONTINUATION
+            return SymbolStructureState.TREND_LATE
+        return SymbolStructureState.TREND_CONTINUATION
 
     if trend_strength >= trend_threshold:
         if (
             exhaustion_risk >= late_trend_exhaustion_threshold
             or reversal_pressure >= reversal_pressure_threshold
         ):
-            return SymbolState.TREND_LATE
-        return SymbolState.TREND_EARLY
+            return SymbolStructureState.TREND_LATE
+        return SymbolStructureState.TREND_EARLY
 
     if exhaustion_risk >= exhaustion_threshold:
-        return SymbolState.TREND_EXHAUSTION
+        return SymbolStructureState.TREND_EXHAUSTION
 
     # 6. Residual risk state
     if (
@@ -182,16 +182,16 @@ def _compute_single_symbol_state(
         or reversal_pressure >= reversal_pressure_threshold
         or volatility_state >= risk_vol_threshold
     ):
-        return SymbolState.RISK_RISING
+        return SymbolStructureState.RISK_RISING
 
     # 7. Fallback uses short position
     if range_position_short <= accumulation_position_threshold:
-        return SymbolState.RANGE_ACCUMULATION
+        return SymbolStructureState.RANGE_ACCUMULATION
 
     if range_position_short >= distribution_position_threshold:
-        return SymbolState.RANGE_DISTRIBUTION
+        return SymbolStructureState.RANGE_DISTRIBUTION
 
-    return SymbolState.RANGE_NEUTRAL
+    return SymbolStructureState.RANGE_NEUTRAL
 
 
 def compute_symbol_states(
@@ -237,7 +237,7 @@ def compute_symbol_states(
 def compute_symbol_state_output(
     structure_output: StructureOutput,
     config: ConfigDict,
-) -> SymbolState:
+) -> SymbolStructureState:
     values = structure_output.values
 
     return _compute_single_symbol_state(
@@ -253,4 +253,32 @@ def compute_symbol_state_output(
         failure_risk=float(values.get(StructureScores.SYMBOL_FAILURE_RISK, 0.0)),
         reversal_pressure=float(values.get(StructureScores.SYMBOL_REVERSAL_PRESSURE, 0.0)),
         config=config,
+    )
+
+def compute_symbol_liquidity_state(
+    liquidity_quality: float,
+) -> SymbolLiquidityState:
+    if liquidity_quality <= -0.5:
+        return SymbolLiquidityState.DRY
+
+    if liquidity_quality <= 0.0:
+        return SymbolLiquidityState.THIN
+
+    if liquidity_quality >= 0.5:
+        return SymbolLiquidityState.LIQUID
+
+    return SymbolLiquidityState.NORMAL
+
+def compute_symbol_liquidity_state_output(
+    structure_output: StructureOutput,
+    config: ConfigDict | None = None,
+) -> SymbolLiquidityState:
+    values = structure_output.values
+
+    liquidity_quality = float(
+        values.get(StructureScores.SYMBOL_LIQUIDITY_QUALITY, 0.0)
+    )
+
+    return compute_symbol_liquidity_state(
+        liquidity_quality=liquidity_quality,
     )
